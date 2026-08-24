@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -33,6 +32,7 @@ ENV_VARS = [
 def _verify_jira(base_url: str, email: str, token: str) -> bool:
     try:
         import requests
+
         r = requests.get(
             f"{base_url.rstrip('/')}/rest/api/3/myself",
             auth=(email, token),
@@ -50,6 +50,7 @@ def _verify_jira(base_url: str, email: str, token: str) -> bool:
 def _verify_confluence(base_url: str, username: str, token: str) -> bool:
     try:
         import requests
+
         r = requests.get(
             f"{base_url.rstrip('/')}/rest/api/content?limit=1",
             auth=(username, token),
@@ -68,7 +69,9 @@ def _verify_gitlab() -> bool:
     try:
         result = subprocess.run(
             ["glab", "auth", "status"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             print("  GitLab: OK")
@@ -85,7 +88,9 @@ def _verify_github() -> bool:
     try:
         result = subprocess.run(
             ["gh", "auth", "status"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             print("  GitHub CLI: OK")
@@ -100,9 +105,11 @@ def _verify_github() -> bool:
 
 def _verify_google_calendar(roster: list[dict], calendar_ids: list[str]) -> bool:
     """Verify Google Calendar access and check for PTO events."""
-    from collectors.calendar import _load_google_creds, _fetch_events
-    import requests
     from datetime import datetime, timedelta, timezone
+
+    import requests
+
+    from collectors.calendar import _fetch_events, _load_google_creds
 
     creds = _load_google_creds()
     if not creds:
@@ -111,12 +118,16 @@ def _verify_google_calendar(roster: list[dict], calendar_ids: list[str]) -> bool
 
     client_id, client_secret, refresh_token = creds
     try:
-        r = requests.post("https://oauth2.googleapis.com/token", data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        }, timeout=15)
+        r = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=15,
+        )
         r.raise_for_status()
         token = r.json().get("access_token")
         if not token:
@@ -146,6 +157,7 @@ def _verify_google_calendar(roster: list[dict], calendar_ids: list[str]) -> bool
 def _verify_team_config(team_name: str, sources: dict[str, str]) -> dict:
     """Load and verify a team's config. Returns parsed config dict or empty."""
     from config import load_config
+
     results = {"config": None, "pages_ok": True, "calendar_ids": []}
 
     # Verify Confluence pages
@@ -209,9 +221,16 @@ def run_check() -> None:
     # 1. Environment variables
     print("--- Environment Variables ---")
     required = ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"]
-    optional = ["CONFLUENCE_URL", "CONFLUENCE_USERNAME", "CONFLUENCE_API_TOKEN",
-                "GITLAB_HOST", "OBSIDIAN_VAULT",
-                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]
+    optional = [
+        "CONFLUENCE_URL",
+        "CONFLUENCE_USERNAME",
+        "CONFLUENCE_API_TOKEN",
+        "GITLAB_HOST",
+        "OBSIDIAN_VAULT",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REFRESH_TOKEN",
+    ]
     for var in required:
         val = os.environ.get(var, "")
         status = "OK" if val else "MISSING (required)"
@@ -278,6 +297,7 @@ def run_check() -> None:
     print("\n--- Obsidian Vault ---")
     if vault:
         from pathlib import Path
+
         vault_path = Path(vault)
         if vault_path.exists():
             print(f"  Vault: OK — {vault_path}")
@@ -326,7 +346,7 @@ def run_setup() -> None:
     if not exports:
         print("\nAll variables already set.")
     else:
-        print(f"\n--- Add to ~/.zshrc ---")
+        print("\n--- Add to ~/.zshrc ---")
         block = "\n".join(exports)
         print(block)
         print("---")
@@ -400,6 +420,7 @@ TEAM_FIELDS = [
 def _extract_page_id(value: str) -> str | None:
     """Extract Confluence page ID from URL or bare ID."""
     import re
+
     m = re.search(r"/pages/(\d+)", value)
     if m:
         return m.group(1)
@@ -420,8 +441,7 @@ def _verify_confluence_page(url_or_id: str, label: str) -> bool:
         print(f"    {label}: SKIP — could not extract page ID from '{url_or_id}'")
         return False
 
-    base = (os.environ.get("CONFLUENCE_URL")
-            or os.environ.get("JIRA_BASE_URL", "").rstrip("/") + "/wiki")
+    base = os.environ.get("CONFLUENCE_URL") or os.environ.get("JIRA_BASE_URL", "").rstrip("/") + "/wiki"
     user = os.environ.get("CONFLUENCE_USERNAME") or os.environ.get("JIRA_EMAIL", "")
     token = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("JIRA_API_TOKEN", "")
 

@@ -9,8 +9,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 
-def save_to_vault(report: str, team_name: str, date_str: str,
-                  test_mode: bool, emoji: str = "") -> str | None:
+def save_to_vault(report: str, team_name: str, date_str: str, test_mode: bool, emoji: str = "") -> str | None:
     """Save report to $OBSIDIAN_VAULT/SCRUMBAN/STATUS/360/. Returns path or None."""
     vault = os.environ.get("OBSIDIAN_VAULT")
     if not vault:
