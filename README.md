@@ -237,6 +237,32 @@ Runs a full diagnostic of your setup. Verifies:
 
 Outputs a summary: `N/M passed, X failed, Y skipped`.
 
+### `team-prs` — PR tracker report
+
+```bash
+python3 team_prs.py
+python3 team_prs.py --team "my team"
+```
+
+Generates a report of all open PRs for the team, collected from both GitHub repos (via `gh` CLI) and JIRA ticket PR links. The report includes:
+
+- **Open PRs grouped by team member** — each roster member gets a section with their PRs
+- **PR age summary table** — all PRs sorted by days open, with clickable links
+- **Deduplication** — same PR found in both GitHub and JIRA appears only once
+
+Requires a complete setup (`--setup` + `--add-team`). If setup is incomplete, offers to run it.
+
+Reports are saved to `Team-PRs-Report/YYYY/Month/` with timestamped filenames:
+
+```
+Team-PRs-Report/
+  2026/
+    August/
+      [24-08-2026 - 14:30:00] - PRs Tracker Report.md
+    September/
+      [15-09-2026 - 09:00:00] - PRs Tracker Report.md
+```
+
 ### Report generation
 
 ```bash
