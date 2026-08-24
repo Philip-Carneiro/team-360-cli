@@ -25,6 +25,7 @@ ACTIVE_STATUSES = {"in progress", "review", "in review", "testing"}
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _jira_get(session: requests.Session, base_url: str, path: str, params: dict | None = None) -> Any:
     url = f"{base_url.rstrip('/')}{path}"
     r = session.get(url, params=params)
@@ -32,8 +33,9 @@ def _jira_get(session: requests.Session, base_url: str, path: str, params: dict 
     return r.json()
 
 
-def _jira_search(session: requests.Session, base_url: str, jql: str,
-                 fields: str = "", max_results: int = 100, expand: str = "") -> list[dict]:
+def _jira_search(
+    session: requests.Session, base_url: str, jql: str, fields: str = "", max_results: int = 100, expand: str = ""
+) -> list[dict]:
     """Paginated JQL search via v3 endpoint."""
     results: list[dict] = []
     start = 0
@@ -147,7 +149,9 @@ def _check_pr_status(url: str, platform: str) -> dict:
         if platform == "github":
             proc = subprocess.run(
                 ["gh", "pr", "view", url, "--json", "state,mergedAt,url"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if proc.returncode == 0:
                 data = json.loads(proc.stdout)
@@ -155,14 +159,15 @@ def _check_pr_status(url: str, platform: str) -> dict:
                 result["checked"] = True
         elif platform == "gitlab":
             gitlab_host = os.environ.get("GITLAB_HOST", "")
-            match = re.search(r'https?://[^/]+/(.+)/-/merge_requests/(\d+)', url)
+            match = re.search(r"https?://[^/]+/(.+)/-/merge_requests/(\d+)", url)
             if match and gitlab_host:
                 project_path = match.group(1).replace("/", "%2F")
                 mr_id = match.group(2)
                 proc = subprocess.run(
-                    ["glab", "api", f"projects/{project_path}/merge_requests/{mr_id}",
-                     "--hostname", gitlab_host],
-                    capture_output=True, text=True, timeout=30,
+                    ["glab", "api", f"projects/{project_path}/merge_requests/{mr_id}", "--hostname", gitlab_host],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if proc.returncode == 0:
                     data = json.loads(proc.stdout)
@@ -220,6 +225,7 @@ def _get_all_pr_links(session: requests.Session, base_url: str, issue: dict) -> 
 # Days Worked — changelog-based algorithm
 # ---------------------------------------------------------------------------
 
+
 def _compute_days_worked(issue: dict) -> tuple[int, str]:
     """Compute days worked by current assignee from changelog.
 
@@ -240,13 +246,17 @@ def _compute_days_worked(issue: dict) -> tuple[int, str]:
                 continue
             from_status = (item.get("fromString") or "").lower()
             to_status = (item.get("toString") or "").lower()
-            if from_status in INACTIVE_STATUSES and to_status in ACTIVE_STATUSES:
-                if assignee_name and _name_match(author_name, assignee_name):
-                    try:
-                        ts = datetime.fromisoformat(h["created"].replace("Z", "+00:00"))
-                        candidate_dates.append(ts)
-                    except (ValueError, KeyError):
-                        pass
+            if (
+                from_status in INACTIVE_STATUSES
+                and to_status in ACTIVE_STATUSES
+                and assignee_name
+                and _name_match(author_name, assignee_name)
+            ):
+                try:
+                    ts = datetime.fromisoformat(h["created"].replace("Z", "+00:00"))
+                    candidate_dates.append(ts)
+                except (ValueError, KeyError):
+                    pass
 
     if candidate_dates:
         candidate_dates.sort(reverse=True)
@@ -298,7 +308,9 @@ def _ticket_base(issue: dict, roster: list[str]) -> dict:
         "issuetype": fields.get("issuetype", {}).get("name", ""),
         "assignee": assignee_name,
         "classification": _classify_assignee(assignee_name, roster),
-        "activity_type": (fields.get("customfield_10464") or {}).get("value", "") if isinstance(fields.get("customfield_10464"), dict) else (fields.get("customfield_10464") or ""),
+        "activity_type": (fields.get("customfield_10464") or {}).get("value", "")
+        if isinstance(fields.get("customfield_10464"), dict)
+        else (fields.get("customfield_10464") or ""),
         "parent_key": parent_key,
         "prs": prs,
     }
@@ -308,8 +320,10 @@ def _ticket_base(issue: dict, roster: list[str]) -> dict:
 # Query functions
 # ---------------------------------------------------------------------------
 
-def collect_doing_board(config: dict, jira_auth: tuple, prev_360_date: str,
-                        swimlane_jql: str | None = None) -> list[dict]:
+
+def collect_doing_board(
+    config: dict, jira_auth: tuple, prev_360_date: str, swimlane_jql: str | None = None
+) -> list[dict]:
     """Query 1: In Progress, Review, Testing tickets with changelog-based days_worked."""
     session = _make_session(jira_auth)
     base = _base_url(config)
@@ -325,7 +339,7 @@ def collect_doing_board(config: dict, jira_auth: tuple, prev_360_date: str,
     if components:
         jql_parts.append(f'component = "{components}"')
     if projects:
-        jql_parts.append(f'project IN ({projects})')
+        jql_parts.append(f"project IN ({projects})")
     if swimlane_jql:
         jql_parts.append(swimlane_jql)
     jql = " AND ".join(jql_parts) + " ORDER BY status ASC, priority DESC"
@@ -382,7 +396,6 @@ def collect_backlog(config: dict, jira_auth: tuple) -> list[dict]:
     components = config.get("jira_components", "")
     projects = config.get("jira_projects", "")
     roster = config.get("roster", [])
-    board_id = config.get("board_id")
 
     jql_parts = [
         f'labels = "{label}"',
@@ -391,7 +404,7 @@ def collect_backlog(config: dict, jira_auth: tuple) -> list[dict]:
     if components:
         jql_parts.append(f'component = "{components}"')
     if projects:
-        jql_parts.append(f'project IN ({projects})')
+        jql_parts.append(f"project IN ({projects})")
     jql = " AND ".join(jql_parts) + " ORDER BY Rank ASC"
 
     issues = _jira_search(session, base, jql, fields="summary,status,priority,assignee,issuetype", max_results=15)
@@ -497,13 +510,13 @@ def collect_completed(config: dict, jira_auth: tuple, since_date: str) -> list[d
 
     jql_parts = [
         f'labels = "{label}"',
-        'status IN (Done, Closed)',
+        "status IN (Done, Closed)",
         f'status CHANGED TO (Done, Closed) AFTER "{since_date}"',
     ]
     if components:
         jql_parts.append(f'component = "{components}"')
     if projects:
-        jql_parts.append(f'project IN ({projects})')
+        jql_parts.append(f"project IN ({projects})")
     jql = " AND ".join(jql_parts) + " ORDER BY updated DESC"
 
     issues = _jira_search(session, base, jql, fields="summary,status,priority,assignee,issuetype")
@@ -520,13 +533,13 @@ def collect_activity_type(config: dict, jira_auth: tuple) -> dict:
 
     jql_parts = [
         f'labels = "{label}"',
-        'status NOT IN (Done, Closed)',
-        'cf[10464] IS NOT EMPTY',
+        "status NOT IN (Done, Closed)",
+        "cf[10464] IS NOT EMPTY",
     ]
     if components:
         jql_parts.append(f'component = "{components}"')
     if projects:
-        jql_parts.append(f'project IN ({projects})')
+        jql_parts.append(f"project IN ({projects})")
     jql = " AND ".join(jql_parts)
 
     issues = _jira_search(session, base, jql, fields="summary,status,customfield_10464")
@@ -566,13 +579,17 @@ def collect_testing_transitions(config: dict, jira_auth: tuple, since_date: str)
     if components:
         jql_parts.append(f'component = "{components}"')
     if projects:
-        jql_parts.append(f'project IN ({projects})')
+        jql_parts.append(f"project IN ({projects})")
     jql = " AND ".join(jql_parts)
 
     issues = _jira_search(session, base, jql, fields="summary,status,assignee", expand="changelog")
 
     results: list[dict] = []
-    since_dt = datetime.fromisoformat(since_date.replace("Z", "+00:00")) if "T" in since_date else datetime.strptime(since_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    since_dt = (
+        datetime.fromisoformat(since_date.replace("Z", "+00:00"))
+        if "T" in since_date
+        else datetime.strptime(since_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    )
 
     for issue in issues:
         key = issue["key"]
@@ -591,12 +608,14 @@ def collect_testing_transitions(config: dict, jira_auth: tuple, since_date: str)
                     except (ValueError, KeyError):
                         pass
 
-        results.append({
-            "key": key,
-            "summary": fields.get("summary", ""),
-            "tested_date": tested_date.isoformat() if tested_date else None,
-            "transitioned_by": transitioned_by,
-        })
+        results.append(
+            {
+                "key": key,
+                "summary": fields.get("summary", ""),
+                "tested_date": tested_date.isoformat() if tested_date else None,
+                "transitioned_by": transitioned_by,
+            }
+        )
 
     return results
 
@@ -615,9 +634,9 @@ def collect_epic_progress(config: dict, jira_auth: tuple, epics: list[dict]) -> 
         epic_key = epic["key"]
 
         children_jql = f'"Epic Link" = {epic_key} OR parent = {epic_key}'
-        children = _jira_search(session, base, children_jql,
-                                fields="summary,status,priority,assignee,issuetype",
-                                expand="changelog")
+        children = _jira_search(
+            session, base, children_jql, fields="summary,status,priority,assignee,issuetype", expand="changelog"
+        )
 
         status_groups: dict[str, int] = {"Done": 0, "In Progress": 0, "Review": 0, "Testing": 0, "Backlog": 0}
         child_results: list[dict] = []
@@ -645,20 +664,22 @@ def collect_epic_progress(config: dict, jira_auth: tuple, epics: list[dict]) -> 
         total = len(child_results)
         done = status_groups["Done"]
 
-        results.append({
-            "key": epic_key,
-            "summary": epic.get("summary", ""),
-            "status": epic.get("status", ""),
-            "days_in_status": epic.get("days_worked", 0),
-            "total_children": total,
-            "done_count": done,
-            "in_progress_count": status_groups["In Progress"],
-            "review_count": status_groups["Review"],
-            "testing_count": status_groups["Testing"],
-            "backlog_count": status_groups["Backlog"],
-            "completion_percentage": round(done / total * 100, 1) if total else 0,
-            "children": child_results,
-        })
+        results.append(
+            {
+                "key": epic_key,
+                "summary": epic.get("summary", ""),
+                "status": epic.get("status", ""),
+                "days_in_status": epic.get("days_worked", 0),
+                "total_children": total,
+                "done_count": done,
+                "in_progress_count": status_groups["In Progress"],
+                "review_count": status_groups["Review"],
+                "testing_count": status_groups["Testing"],
+                "backlog_count": status_groups["Backlog"],
+                "completion_percentage": round(done / total * 100, 1) if total else 0,
+                "children": child_results,
+            }
+        )
 
     return results
 
@@ -671,13 +692,16 @@ def collect_active_sprint(config: dict, jira_auth: tuple) -> dict | None:
     if not board_id:
         return None
     try:
-        data = _jira_get(session, base, f"/rest/agile/1.0/board/{board_id}/sprint",
-                         {"state": "active"})
+        data = _jira_get(session, base, f"/rest/agile/1.0/board/{board_id}/sprint", {"state": "active"})
         sprints = data.get("values", [])
         if sprints:
             s = sprints[0]
-            return {"id": s.get("id"), "name": s.get("name", ""),
-                    "start": s.get("startDate", ""), "end": s.get("endDate", "")}
+            return {
+                "id": s.get("id"),
+                "name": s.get("name", ""),
+                "start": s.get("startDate", ""),
+                "end": s.get("endDate", ""),
+            }
     except Exception as e:
         log.warning("Failed to fetch active sprint for board %s: %s", board_id, e)
     return None
@@ -698,14 +722,13 @@ def collect_learning_tickets(config: dict, jira_auth: tuple) -> list[dict]:
     jql_parts = [
         f'labels = "{label}"',
         'summary ~ "Learning"',
-        'sprint in openSprints()',
+        "sprint in openSprints()",
     ]
     if components:
         jql_parts.append(f'component = "{components}"')
 
     try:
-        issues = _jira_search(session, base, " AND ".join(jql_parts),
-                              fields="summary,status,assignee,issuetype")
+        issues = _jira_search(session, base, " AND ".join(jql_parts), fields="summary,status,assignee,issuetype")
         if issues:
             return [_ticket_base(issue, roster) for issue in issues]
     except Exception:
@@ -715,14 +738,13 @@ def collect_learning_tickets(config: dict, jira_auth: tuple) -> list[dict]:
     jql_parts_fb = [
         f'labels = "{label}"',
         'summary ~ "Learning"',
-        'status NOT IN (Done, Closed)',
+        "status NOT IN (Done, Closed)",
     ]
     if components:
         jql_parts_fb.append(f'component = "{components}"')
 
     try:
-        issues = _jira_search(session, base, " AND ".join(jql_parts_fb),
-                              fields="summary,status,assignee,issuetype")
+        issues = _jira_search(session, base, " AND ".join(jql_parts_fb), fields="summary,status,assignee,issuetype")
         return [_ticket_base(issue, roster) for issue in issues]
     except Exception as e:
         log.warning("Learning ticket query failed: %s", e)
@@ -732,6 +754,7 @@ def collect_learning_tickets(config: dict, jira_auth: tuple) -> list[dict]:
 def _extract_board_project(config: dict) -> str:
     """Extract JIRA project key from the doing board URL."""
     import re
+
     url = config.get("doing_board_url", "")
     m = re.search(r"/projects/([A-Z0-9]+)/", url)
     if m:
@@ -739,8 +762,7 @@ def _extract_board_project(config: dict) -> str:
     return ""
 
 
-def collect_board_swimlanes(config: dict, jira_auth: tuple,
-                            doing_board: list[dict]) -> list[dict]:
+def collect_board_swimlanes(config: dict, jira_auth: tuple, doing_board: list[dict]) -> list[dict]:
     """Discover board swimlanes by querying active tickets and grouping by fixVersion.
 
     Uses a single JQL query to find all active tickets with the team label,
@@ -761,11 +783,16 @@ def collect_board_swimlanes(config: dict, jira_auth: tuple,
 
     # ponytail: single query, group in Python — avoids N requests per fixVersion
     try:
-        result = _jira_get(session, base, "/rest/api/3/search/jql", {
-            "jql": " AND ".join(jql_parts),
-            "fields": "fixVersions",
-            "maxResults": 200,
-        })
+        result = _jira_get(
+            session,
+            base,
+            "/rest/api/3/search/jql",
+            {
+                "jql": " AND ".join(jql_parts),
+                "fields": "fixVersions",
+                "maxResults": 200,
+            },
+        )
     except Exception as e:
         log.warning("Failed to fetch tickets for swimlane discovery: %s", e)
         return []
@@ -789,16 +816,24 @@ def collect_board_swimlanes(config: dict, jira_auth: tuple,
 
     swimlanes: list[dict] = []
     for name, count in sorted(version_counts.items(), key=lambda x: -x[1]):
-        swimlanes.append({
-            "key": name, "name": name, "count": count,
-            "jql": f'fixVersion = "{name}"',
-        })
+        swimlanes.append(
+            {
+                "key": name,
+                "name": name,
+                "count": count,
+                "jql": f'fixVersion = "{name}"',
+            }
+        )
 
     if no_version_count > 0:
-        swimlanes.append({
-            "key": "__NO_VERSION__", "name": "No fix version",
-            "count": no_version_count, "jql": "fixVersion IS EMPTY",
-        })
+        swimlanes.append(
+            {
+                "key": "__NO_VERSION__",
+                "name": "No fix version",
+                "count": no_version_count,
+                "jql": "fixVersion IS EMPTY",
+            }
+        )
 
     swimlanes.sort(key=lambda s: s["count"], reverse=True)
     return swimlanes

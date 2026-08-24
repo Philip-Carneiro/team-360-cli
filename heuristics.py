@@ -108,13 +108,17 @@ def _find_stale(board: list, roster: list[dict]) -> list[dict]:
         days = t.get("days_worked") or 0
         level = _stale_level(days)
         if level:
-            out.append({
-                "key": t["key"], "summary": t.get("summary", ""),
-                "status": t.get("status", ""),
-                "assignee": _get_assignee_name(t) or "Unassigned",
-                "days_worked": days, "level": level,
-                "priority": _get_field_str(t, "priority"),
-            })
+            out.append(
+                {
+                    "key": t["key"],
+                    "summary": t.get("summary", ""),
+                    "status": t.get("status", ""),
+                    "assignee": _get_assignee_name(t) or "Unassigned",
+                    "days_worked": days,
+                    "level": level,
+                    "priority": _get_field_str(t, "priority"),
+                }
+            )
     out.sort(key=lambda x: x["days_worked"], reverse=True)
     return out
 
@@ -145,15 +149,17 @@ def _find_overloaded(board: list, roster: list[dict]) -> list[dict]:
         if len(tickets) >= 3 and len(epics) >= 2:
             signals.append(f"Context-switching ({len(tickets)} items across {len(epics)} epics)")
 
-        stale_epic_set = {_epic_key(t) for t in tickets
-                         if (t.get("days_worked") or 0) >= 7 and _epic_key(t)}
+        stale_epic_set = {_epic_key(t) for t in tickets if (t.get("days_worked") or 0) >= 7 and _epic_key(t)}
         if len(stale_epic_set) >= 2:
             signals.append(f"Spread thin + stale across {len(stale_epic_set)} epics")
 
-        blocked = [t for t in tickets if
-                   (t.get("status") or "").lower() == "blocked"
-                   or "blocked" in [(la or "").lower() for la in (t.get("labels") or [])]
-                   or t.get("is_blocked")]
+        blocked = [
+            t
+            for t in tickets
+            if (t.get("status") or "").lower() == "blocked"
+            or "blocked" in [(la or "").lower() for la in (t.get("labels") or [])]
+            or t.get("is_blocked")
+        ]
         if blocked:
             signals.append(f"Blocked ({len(blocked)})")
 
@@ -164,10 +170,14 @@ def _find_overloaded(board: list, roster: list[dict]) -> list[dict]:
 
 def _find_critical_bugs(board: list, roster: list[dict]) -> list[dict]:
     return [
-        {"key": t["key"], "summary": t.get("summary", ""),
-         "priority": _get_field_str(t, "priority"),
-         "assignee": _get_assignee_name(t) or "Unassigned",
-         "status": t.get("status", ""), "classification": _classify(t, roster)}
+        {
+            "key": t["key"],
+            "summary": t.get("summary", ""),
+            "priority": _get_field_str(t, "priority"),
+            "assignee": _get_assignee_name(t) or "Unassigned",
+            "status": t.get("status", ""),
+            "classification": _classify(t, roster),
+        }
         for t in board
         if _get_field_str(t, "issuetype").lower() == "bug"
         and _get_field_str(t, "priority").lower() in ("critical", "blocker")
@@ -177,8 +187,7 @@ def _find_critical_bugs(board: list, roster: list[dict]) -> list[dict]:
 
 def _find_buried_criticals(backlog: list) -> list[dict]:
     return [
-        {"key": t["key"], "summary": t.get("summary", ""),
-         "priority": _get_field_str(t, "priority"), "rank": i + 1}
+        {"key": t["key"], "summary": t.get("summary", ""), "priority": _get_field_str(t, "priority"), "rank": i + 1}
         for i, t in enumerate(backlog)
         if i >= 5 and _get_field_str(t, "priority").lower() in ("critical", "blocker")
     ]
@@ -201,9 +210,15 @@ def _analyze_strats(strats: dict, prev: dict | None) -> list[dict]:
             elif color and color == pc and pc != "green":
                 alerts.append(f"Stall: {color} for 2+ reports")
         if alerts:
-            signals.append({"key": key, "summary": s.get("summary", ""),
-                           "color": s.get("color", ""), "status": s.get("status", ""),
-                           "alerts": alerts})
+            signals.append(
+                {
+                    "key": key,
+                    "summary": s.get("summary", ""),
+                    "color": s.get("color", ""),
+                    "status": s.get("status", ""),
+                    "alerts": alerts,
+                }
+            )
     return signals
 
 
@@ -218,26 +233,40 @@ def _analyze_prs(board: list, gh_prs: dict, roster: list[dict]) -> list[dict]:
 
         if composite == "PARTIALLY_MERGED":
             merged = sum(1 for p in pr_links if p.get("state") == "MERGED")
-            alerts.append({"key": t["key"], "type": "PARTIALLY_MERGED",
-                          "detail": f"{merged}/{len(pr_links)} merged — others still open"})
+            alerts.append(
+                {
+                    "key": t["key"],
+                    "type": "PARTIALLY_MERGED",
+                    "detail": f"{merged}/{len(pr_links)} merged — others still open",
+                }
+            )
         if status in ("review", "in review") and composite == "ALL_MERGED":
-            alerts.append({"key": t["key"], "type": "MERGED_STILL_IN_REVIEW",
-                          "detail": "All PRs merged but ticket still in Review"})
+            alerts.append(
+                {
+                    "key": t["key"],
+                    "type": "MERGED_STILL_IN_REVIEW",
+                    "detail": "All PRs merged but ticket still in Review",
+                }
+            )
         if status in ("testing", "in testing") and composite in ("ALL_OPEN", "PARTIALLY_MERGED"):
-            alerts.append({"key": t["key"], "type": "PREMATURE_TESTING",
-                          "detail": "Moved to Testing before all PRs merged"})
+            alerts.append(
+                {"key": t["key"], "type": "PREMATURE_TESTING", "detail": "Moved to Testing before all PRs merged"}
+            )
 
     for repo, prs in gh_prs.items():
         for pr in prs:
             health = pr.get("pr_health", "")
-            if health in ("BUILD_FAILING", "CHANGES_REQUESTED_NOT_ADDRESSED",
-                          "AWAITING_INITIAL_REVIEW"):
-                alerts.append({
-                    "key": f"#{pr.get('number', '')}", "type": health,
-                    "detail": pr.get("pr_health_detail", ""),
-                    "repo": repo, "url": pr.get("url", ""),
-                    "days_since_owner_update": pr.get("days_since_owner_update", 0),
-                })
+            if health in ("BUILD_FAILING", "CHANGES_REQUESTED_NOT_ADDRESSED", "AWAITING_INITIAL_REVIEW"):
+                alerts.append(
+                    {
+                        "key": f"#{pr.get('number', '')}",
+                        "type": health,
+                        "detail": pr.get("pr_health_detail", ""),
+                        "repo": repo,
+                        "url": pr.get("url", ""),
+                        "days_since_owner_update": pr.get("days_since_owner_update", 0),
+                    }
+                )
     return alerts
 
 
@@ -258,21 +287,21 @@ def _activity_split(board: list, completed: list) -> dict:
 
     total = sum(c["active"] + c["completed"] for c in counts.values())
     return {
-        name: {**c, "total": c["active"] + c["completed"],
-               "pct": round((c["active"] + c["completed"]) / total * 100) if total else 0}
+        name: {
+            **c,
+            "total": c["active"] + c["completed"],
+            "pct": round((c["active"] + c["completed"]) / total * 100) if total else 0,
+        }
         for name, c in counts.items()
     }
 
 
-def _build_per_person(board: list, roster: list[dict], stale: list[dict],
-                      testing_tx: list, completed: list) -> dict:
+def _build_per_person(board: list, roster: list[dict], stale: list[dict], testing_tx: list, completed: list) -> dict:
     stale_keys = {s["key"] for s in stale}
     pp: dict[str, dict] = {}
     for m in roster:
-        pp[m["name"]] = {"tickets": [], "alerts": [], "testing_activity": [],
-                         "completions": [], "is_qe": _is_qe(m)}
-    pp["Unassigned"] = {"tickets": [], "alerts": [], "testing_activity": [],
-                        "completions": [], "is_qe": False}
+        pp[m["name"]] = {"tickets": [], "alerts": [], "testing_activity": [], "completions": [], "is_qe": _is_qe(m)}
+    pp["Unassigned"] = {"tickets": [], "alerts": [], "testing_activity": [], "completions": [], "is_qe": False}
 
     for t in board:
         cls = _classify(t, roster)
@@ -309,38 +338,51 @@ def _build_per_person(board: list, roster: list[dict], stale: list[dict],
     return pp
 
 
-def _build_agenda(stale: list, overloaded: list, bugs: list, pr_alerts: list,
-                  strat_sig: list, board: list, roster: list[dict],
-                  prev: dict | None) -> list[dict]:
+def _build_agenda(
+    stale: list,
+    overloaded: list,
+    bugs: list,
+    pr_alerts: list,
+    strat_sig: list,
+    board: list,
+    roster: list[dict],
+    prev: dict | None,
+) -> list[dict]:
     agenda: list[dict] = []
     prev_stale_keys = {s.get("key") for s in (prev or {}).get("stale_items", [])}
     prev_date = (prev or {}).get("date", "previous 360")
 
     for s in stale:
         if s["key"] in prev_stale_keys:
-            agenda.append({"priority": 1,
-                          "text": f"{_ticket_link(s['key'])} — {s['summary']} — "
-                                  f"{s['level']} ({s['days_worked']}d, carried over from {prev_date})"})
+            agenda.append(
+                {
+                    "priority": 1,
+                    "text": f"{_ticket_link(s['key'])} — {s['summary']} — "
+                    f"{s['level']} ({s['days_worked']}d, carried over from {prev_date})",
+                }
+            )
 
     for b in bugs:
         if b["classification"] == "UNASSIGNED":
-            agenda.append({"priority": 2,
-                          "text": f"{_ticket_link(b['key'])} — {b['priority']} bug unassigned: {b['summary']}"})
+            agenda.append(
+                {"priority": 2, "text": f"{_ticket_link(b['key'])} — {b['priority']} bug unassigned: {b['summary']}"}
+            )
 
     for o in overloaded:
-        agenda.append({"priority": 3,
-                      "text": f"{o['name']} — {', '.join(o['signals'])}"})
+        agenda.append({"priority": 3, "text": f"{o['name']} — {', '.join(o['signals'])}"})
 
     for s in stale:
         if s["key"] not in prev_stale_keys and s["level"] in ("WARNING", "DANGER"):
-            agenda.append({"priority": 4,
-                          "text": f"{_ticket_link(s['key'])} — {s['summary']} — "
-                                  f"{s['level']} ({s['days_worked']}d)"})
+            agenda.append(
+                {
+                    "priority": 4,
+                    "text": f"{_ticket_link(s['key'])} — {s['summary']} — {s['level']} ({s['days_worked']}d)",
+                }
+            )
 
     for a in pr_alerts:
         if a["type"] == "PARTIALLY_MERGED":
-            agenda.append({"priority": 5,
-                          "text": f"{_ticket_link(a['key'])} — {a['detail']}"})
+            agenda.append({"priority": 5, "text": f"{_ticket_link(a['key'])} — {a['detail']}"})
 
     for a in pr_alerts:
         if a["type"] == "AWAITING_INITIAL_REVIEW" and a.get("days_since_owner_update", 0) >= 14:
@@ -349,8 +391,7 @@ def _build_agenda(stale: list, overloaded: list, bugs: list, pr_alerts: list,
 
     for s in strat_sig:
         for alert in s["alerts"]:
-            agenda.append({"priority": 7,
-                          "text": f"{_ticket_link(s['key'])} — {s['summary']} — {alert}"})
+            agenda.append({"priority": 7, "text": f"{_ticket_link(s['key'])} — {s['summary']} — {alert}"})
 
     seen_keys = set()
     for a in agenda:
@@ -360,24 +401,22 @@ def _build_agenda(stale: list, overloaded: list, bugs: list, pr_alerts: list,
                 seen_keys.add(k)
     for t in board:
         if _classify(t, roster) == "UNASSIGNED" and not _is_epic(t) and not _is_strat(t) and t["key"] not in seen_keys:
-            agenda.append({"priority": 8,
-                          "text": f"{_ticket_link(t['key'])} — {t.get('summary', '')} — needs owner"})
+            agenda.append({"priority": 8, "text": f"{_ticket_link(t['key'])} — {t.get('summary', '')} — needs owner"})
 
     agenda.sort(key=lambda x: x["priority"])
     return agenda[:8]
 
 
-def _build_snapshot(board: list, stale: list, bugs: list, completed: list,
-                    roster: list[dict]) -> dict:
+def _build_snapshot(board: list, stale: list, bugs: list, completed: list, roster: list[dict]) -> dict:
     own = [t for t in board if _classify(t, roster) != "THIRD-PARTY"]
     tp = [t for t in board if _classify(t, roster) == "THIRD-PARTY"]
 
     def _count(*statuses: str) -> int:
         return sum(1 for t in own if (t.get("status") or "").lower() in statuses)
 
-    engineers = {_roster_match(_get_assignee_name(t), roster)
-                 for t in own
-                 if _roster_match(_get_assignee_name(t), roster)}
+    engineers = {
+        _roster_match(_get_assignee_name(t), roster) for t in own if _roster_match(_get_assignee_name(t), roster)
+    }
 
     return {
         "in_progress": _count("in progress"),
@@ -393,8 +432,7 @@ def _build_snapshot(board: list, stale: list, bugs: list, completed: list,
     }
 
 
-def _build_trend(snapshot: dict, completed: list, strats: dict,
-                 stale: list, prev: dict | None) -> str:
+def _build_trend(snapshot: dict, completed: list, strats: dict, stale: list, prev: dict | None) -> str:
     if not prev:
         return "First 360 for this team. No comparison baseline."
 
@@ -413,37 +451,47 @@ def _build_trend(snapshot: dict, completed: list, strats: dict,
     if epics_closed:
         parts.append(f"{epics_closed} Epic{'s' if epics_closed != 1 else ''} closed.")
 
-    rp = [s for s in strats.get("committed", [])
-          if (s.get("status") or "").lower() in ("release pending", "done", "closed")]
+    rp = [
+        s
+        for s in strats.get("committed", [])
+        if (s.get("status") or "").lower() in ("release pending", "done", "closed")
+    ]
     if rp:
         parts.append(f"{len(rp)} STRAT{'s' if len(rp) != 1 else ''} to Release Pending.")
 
     prev_stale_ct = prev_snap.get("stale", 0)
     cur_stale_ct = snapshot.get("stale", 0)
     if cur_stale_ct != prev_stale_ct:
-        parts.append(f"Stale count {'up' if cur_stale_ct > prev_stale_ct else 'down'} "
-                     f"from {prev_stale_ct} to {cur_stale_ct}.")
+        parts.append(
+            f"Stale count {'up' if cur_stale_ct > prev_stale_ct else 'down'} from {prev_stale_ct} to {cur_stale_ct}."
+        )
 
     return " ".join(parts) if parts else "Board stable. No significant movement this cycle."
 
 
-def _build_wins(completed: list, strats: dict, resolved: list,
-                bugs_prev: list, bugs_cur: list) -> list[dict]:
+def _build_wins(completed: list, strats: dict, resolved: list, bugs_prev: list, bugs_cur: list) -> list[dict]:
     wins: list[dict] = []
 
     for c in completed:
         if _is_epic(c):
-            wins.append({"win": f"{c['key']} ({c.get('summary', '')}) closed",
-                         "who": _get_assignee_name(c) or "Team"})
+            wins.append({"win": f"{c['key']} ({c.get('summary', '')}) closed", "who": _get_assignee_name(c) or "Team"})
 
     for s in strats.get("committed", []):
         if (s.get("status") or "").lower() in ("release pending", "done", "closed"):
-            wins.append({"win": f"{s['key']} ({s.get('summary', '')}) moved to Release Pending",
-                         "who": s.get("assignee") or s.get("owner") or "Team"})
+            wins.append(
+                {
+                    "win": f"{s['key']} ({s.get('summary', '')}) moved to Release Pending",
+                    "who": s.get("assignee") or s.get("owner") or "Team",
+                }
+            )
 
     for r in resolved:
-        wins.append({"win": f"{r['key']} ({r.get('summary', '')}) resolved after being stale",
-                     "who": r.get("assignee") or "Team"})
+        wins.append(
+            {
+                "win": f"{r['key']} ({r.get('summary', '')}) resolved after being stale",
+                "who": r.get("assignee") or "Team",
+            }
+        )
 
     prev_bug_keys = {b.get("key") for b in bugs_prev}
     for bk in prev_bug_keys:
@@ -465,12 +513,20 @@ def _analyze_learning(learning_tickets: list[dict], roster: list[dict]) -> dict:
     return {"by_person": by_person, "missing": missing}
 
 
-def apply_heuristics(doing_board: list, backlog: list, strats: dict,
-                     completed: list, github_prs: dict, gitlab_mrs: dict,
-                     testing_transitions: list, epic_progress: list,
-                     config: dict, previous_360: dict | None,
-                     absence_data: dict[str, dict[str, list[str]]] | None = None,
-                     learning_tickets: list[dict] | None = None) -> dict:
+def apply_heuristics(
+    doing_board: list,
+    backlog: list,
+    strats: dict,
+    completed: list,
+    github_prs: dict,
+    gitlab_mrs: dict,
+    testing_transitions: list,
+    epic_progress: list,
+    config: dict,
+    previous_360: dict | None,
+    absence_data: dict[str, dict[str, list[str]]] | None = None,
+    learning_tickets: list[dict] | None = None,
+) -> dict:
     """Apply all heuristic rules and return analyzed data."""
     roster = config.get("roster", [])
 
@@ -497,8 +553,7 @@ def apply_heuristics(doing_board: list, backlog: list, strats: dict,
         if name in per_person:
             per_person[name]["learning_tickets"] = tickets
 
-    agenda = _build_agenda(stale, overloaded, bugs, pr_alerts, strat_signals,
-                           doing_board, roster, previous_360)
+    agenda = _build_agenda(stale, overloaded, bugs, pr_alerts, strat_signals, doing_board, roster, previous_360)
     snapshot = _build_snapshot(doing_board, stale, bugs, completed, roster)
     activity = _activity_split(doing_board, completed)
     third_party = [t for t in doing_board if _classify(t, roster) == "THIRD-PARTY"]
