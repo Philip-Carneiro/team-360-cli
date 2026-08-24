@@ -1,0 +1,7 @@
+{
+  "Example Team": {
+    "team_md": "https://your-org.atlassian.net/wiki/spaces/TEAM/pages/123/Team+Overview",
+    "jira_md": "https://your-org.atlassian.net/wiki/spaces/TEAM/pages/456/Jira+Reference",
+    "confluence_md": "https://your-org.atlassian.net/wiki/spaces/TEAM/pages/789/Confluence+Reference"
+  }
+}
