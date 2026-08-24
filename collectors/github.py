@@ -13,8 +13,13 @@ from datetime import datetime, timezone
 log = logging.getLogger(__name__)
 
 KNOWN_BOTS = {
-    "dependabot", "renovate", "openshift-merge-bot", "openshift-ci",
-    "red-hat-konflux", "konflux-internal-p", "openshift-merge-robot",
+    "dependabot",
+    "renovate",
+    "openshift-merge-bot",
+    "openshift-ci",
+    "red-hat-konflux",
+    "konflux-internal-p",
+    "openshift-merge-robot",
 }
 
 PR_FIELDS = "number,title,author,createdAt,updatedAt,reviewDecision,statusCheckRollup,url,commits,reviews,comments"
@@ -80,7 +85,6 @@ def _compute_days_since_owner_update(pr: dict) -> int:
 
 def _compute_pr_health(pr: dict, days_since_owner: int) -> dict:
     """Classify PR into exactly one health category (first match wins)."""
-    author_login = pr.get("author", {}).get("login", "")
     checks = pr.get("statusCheckRollup", []) or []
     reviews = pr.get("reviews", []) or []
     commits = pr.get("commits", []) or []
@@ -102,7 +106,9 @@ def _compute_pr_health(pr: dict, days_since_owner: int) -> dict:
 
         if cr_date and last_commit_date and last_commit_date > cr_date:
             has_approval_after = any(
-                r.get("state") == "APPROVED" and _parse_iso(r.get("submittedAt", "")) and _parse_iso(r.get("submittedAt", "")) > last_commit_date  # type: ignore[operator]
+                r.get("state") == "APPROVED"
+                and _parse_iso(r.get("submittedAt", ""))
+                and _parse_iso(r.get("submittedAt", "")) > last_commit_date  # type: ignore[operator]
                 for r in reviews
             )
             if not has_approval_after:
@@ -159,7 +165,19 @@ def collect_github_prs(config: dict) -> dict:
                 log.warning("Failed to parse gh output for %s", repo)
 
         if not prs and label:
-            cmd_no_label = ["gh", "pr", "list", "--repo", repo, "--state", "open", "--json", PR_FIELDS, "--limit", "100"]
+            cmd_no_label = [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "open",
+                "--json",
+                PR_FIELDS,
+                "--limit",
+                "100",
+            ]
             proc2 = subprocess.run(cmd_no_label, capture_output=True, text=True, timeout=60)
             if proc2.returncode == 0 and proc2.stdout.strip():
                 try:
@@ -184,7 +202,9 @@ def collect_github_prs(config: dict) -> dict:
                 "days_since_owner_update": days_since_owner,
                 "review_decision": pr.get("reviewDecision"),
                 "pr_health": health,
-                "failing_checks": [c.get("name") for c in (pr.get("statusCheckRollup") or []) if c.get("conclusion") == "FAILURE"],
+                "failing_checks": [
+                    c.get("name") for c in (pr.get("statusCheckRollup") or []) if c.get("conclusion") == "FAILURE"
+                ],
             }
 
             if author_login.lower() in KNOWN_BOTS:

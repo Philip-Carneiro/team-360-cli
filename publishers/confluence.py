@@ -12,17 +12,17 @@ import requests
 log = logging.getLogger(__name__)
 
 
-def fetch_previous_360(confluence_auth: tuple, confluence_url: str,
-                       root_dir_id: int) -> tuple[dict | None, str | None]:
+def fetch_previous_360(confluence_auth: tuple, confluence_url: str, root_dir_id: int) -> tuple[dict | None, str | None]:
     """Find most recent 360 page under root dir. Returns (page_data, page_url)."""
     url = f"{confluence_url.rstrip('/')}/rest/api/content/{root_dir_id}/child/page"
     try:
-        r = requests.get(url, auth=confluence_auth,
-                         params={"limit": 25, "expand": "version"},
-                         timeout=30)
+        r = requests.get(url, auth=confluence_auth, params={"limit": 25, "expand": "version"}, timeout=30)
         r.raise_for_status()
-        pages = [p for p in r.json().get("results", [])
-                 if "360" in p.get("title", "") and "-test" not in p.get("title", "").lower()]
+        pages = [
+            p
+            for p in r.json().get("results", [])
+            if "360" in p.get("title", "") and "-test" not in p.get("title", "").lower()
+        ]
         if pages:
             page = pages[0]
             page_url = f"{confluence_url.rstrip('/')}/pages/{page['id']}"
@@ -32,21 +32,23 @@ def fetch_previous_360(confluence_auth: tuple, confluence_url: str,
     return None, None
 
 
-def archive_previous_360(confluence_auth: tuple, confluence_url: str,
-                         page_id: int, past_dir_id: int) -> bool:
+def archive_previous_360(confluence_auth: tuple, confluence_url: str, page_id: int, past_dir_id: int) -> bool:
     """Move current 360 page to Past directory. Returns success."""
     try:
         base = confluence_url.rstrip("/")
-        r = requests.get(f"{base}/rest/api/content/{page_id}",
-                         auth=confluence_auth,
-                         params={"expand": "version,body.storage"},
-                         timeout=30)
+        r = requests.get(
+            f"{base}/rest/api/content/{page_id}",
+            auth=confluence_auth,
+            params={"expand": "version,body.storage"},
+            timeout=30,
+        )
         r.raise_for_status()
         page = r.json()
 
         r = requests.put(
             f"{base}/rest/api/content/{page_id}",
-            auth=confluence_auth, timeout=30,
+            auth=confluence_auth,
+            timeout=30,
             json={
                 "type": "page",
                 "title": page["title"],
@@ -63,9 +65,9 @@ def archive_previous_360(confluence_auth: tuple, confluence_url: str,
         return False
 
 
-def publish_360(confluence_auth: tuple, confluence_url: str,
-                root_dir_id: int, title: str, html_content: str,
-                space_key: str = "") -> tuple[int, str]:
+def publish_360(
+    confluence_auth: tuple, confluence_url: str, root_dir_id: int, title: str, html_content: str, space_key: str = ""
+) -> tuple[int, str]:
     """Create new 360 page. Returns (page_id, page_url)."""
     body: dict = {
         "type": "page",
@@ -76,8 +78,7 @@ def publish_360(confluence_auth: tuple, confluence_url: str,
     if space_key:
         body["space"] = {"key": space_key}
 
-    r = requests.post(f"{confluence_url.rstrip('/')}/rest/api/content",
-                      auth=confluence_auth, json=body, timeout=60)
+    r = requests.post(f"{confluence_url.rstrip('/')}/rest/api/content", auth=confluence_auth, json=body, timeout=60)
     r.raise_for_status()
     result = r.json()
     page_id = int(result["id"])

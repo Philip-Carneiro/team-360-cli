@@ -42,8 +42,7 @@ def _md_table(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
         return ""
     sep = ["---"] * len(headers)
-    lines = ["| " + " | ".join(headers) + " |",
-             "| " + " | ".join(sep) + " |"]
+    lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join(sep) + " |"]
     for row in rows:
         padded = list(row) + [""] * (len(headers) - len(row))
         lines.append("| " + " | ".join(str(c) for c in padded) + " |")
@@ -145,6 +144,7 @@ def _delta_str(current: int, previous: int | None) -> str:
 
 
 # --- Previous report parsers ---
+
 
 def _parse_prev_snapshot(text: str) -> dict[str, int]:
     result: dict[str, int] = {}
@@ -253,7 +253,12 @@ def _clean_status_summary(text: str, max_len: int = 60) -> str:
     if not text:
         return "—"
     text = re.sub(r"^(RHAI\s+\w+\s+Team\s*[-–—]?\s*)", "", text)
-    text = re.sub(r"(Dashboard\s*[-–—]\s*\w+\s*[-–—]\s*)?Status\s*[-–—]?\s*(Green|Yellow|Red|Orange)\s*\U0001f7e2?\s*[-–—]?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(Dashboard\s*[-–—]\s*\w+\s*[-–—]\s*)?Status\s*[-–—]?\s*(Green|Yellow|Red|Orange)\s*\U0001f7e2?\s*[-–—]?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"Target\s+\d+\.\d+\s*(Stable|EA|GA|TP|DP)?\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^\s*[-–—]\s*", "", text).strip()
     # ponytail: fix concatenated words and missing spaces from raw JIRA
@@ -281,9 +286,15 @@ def _fmt_prev_link(url: str | None, title: str | None) -> str:
     return url
 
 
-def _header(config: dict, test_mode: bool, prev_url: str | None, ctime: str,
-             prev_title: str | None = None, trend: str = "",
-             emoji: str = "") -> str:
+def _header(
+    config: dict,
+    test_mode: bool,
+    prev_url: str | None,
+    ctime: str,
+    prev_title: str | None = None,
+    trend: str = "",
+    emoji: str = "",
+) -> str:
     now = datetime.now(timezone.utc)
     team = config.get("team_name", "Team")
     gen_time = now.strftime("%Y-%m-%d") + " at " + now.strftime("%H:%M") + " UTC"
@@ -304,8 +315,7 @@ def _header(config: dict, test_mode: bool, prev_url: str | None, ctime: str,
     title_emoji = emoji or random.choice(_TITLE_EMOJIS)
     lines = [f"# {title_emoji} {team} 360 — {now.strftime('%A %d %B %Y')}", ""]
     if test_mode:
-        lines += ["> **TEST MODE** — this page was generated as a dry run. "
-                  "Do not use for ceremony decisions.", ""]
+        lines += ["> **TEST MODE** — this page was generated as a dry run. Do not use for ceremony decisions.", ""]
     fields = [
         f"**Generated**: {gen_time}",
         f"**Board**: {board_link or 'N/A'}",
@@ -347,22 +357,22 @@ def _s_wins(a: dict) -> str:
 
 def _s_agenda(a: dict) -> str:
     board_map = {t["key"]: t for t in a.get("doing_board", [])}
-    lines = ["## 2. Agenda", "",
-             "Items requiring team discussion, ordered by priority:", ""]
+    lines = ["## 2. Agenda", "", "Items requiring team discussion, ordered by priority:", ""]
 
     # ponytail: strategic briefing, not a ticket dump. Positive first, top dangers, concerns. Cap at 6.
     positives = []
     epics = a.get("epic_progress", [])
     completed = a.get("completed", [])
-    near_complete = [e for e in epics
-                     if e.get("total_children", 0) > 0
-                     and e.get("done_count", 0) / e["total_children"] >= 0.7]
+    near_complete = [
+        e for e in epics if e.get("total_children", 0) > 0 and e.get("done_count", 0) / e["total_children"] >= 0.7
+    ]
     if near_complete or len(completed) >= 3:
         parts = []
         if near_complete:
             pcts = ", ".join(
                 f"{e.get('summary', '')[:35]} {round(e['done_count'] / e['total_children'] * 100)}%"
-                for e in near_complete[:3])
+                for e in near_complete[:3]
+            )
             parts.append(f"{len(near_complete)} Epics nearing completion ({pcts})")
         if completed:
             parts.append(f"{len(completed)} tickets completed this cycle")
@@ -477,7 +487,7 @@ def _s_snapshot(a: dict, prev_snapshot: dict[str, int] | None = None) -> str:
         _row("Testing (roster + unassigned)", s.get("testing", 0)),
     ]
     total = s.get("total_doing", 0)
-    total_row = [f"**Total doing (roster + unassigned)**", f"**{total}**"]
+    total_row = ["**Total doing (roster + unassigned)**", f"**{total}**"]
     if has_delta:
         prev_total = prev_snapshot.get("Total doing (roster + unassigned)")
         total_row.append(f"**{_delta_str(total, prev_total)}**" if prev_total is not None else "—")
@@ -492,11 +502,14 @@ def _s_snapshot(a: dict, prev_snapshot: dict[str, int] | None = None) -> str:
     ]
 
     parts = [
-        "## 3. Snapshot Stats", "",
+        "## 3. Snapshot Stats",
+        "",
         "> Counts below include **only roster members and unassigned tickets**. "
         "Third-party assigned tickets are reported separately in Section 13. "
-        "Epic-type tickets are excluded from stale counts — see Section 5.5.", "",
-        _md_table(headers, rows), "",
+        "Epic-type tickets are excluded from stale counts — see Section 5.5.",
+        "",
+        _md_table(headers, rows),
+        "",
     ]
 
     absences = a.get("absence_data", {})
@@ -515,9 +528,9 @@ def _s_snapshot(a: dict, prev_snapshot: dict[str, int] | None = None) -> str:
                 sick_lines.append(f"{name}: {', '.join(sick_dates)} ({len(sick_dates)}d)")
                 total_days += len(sick_dates)
         if pto_lines:
-            parts.append(f"**PTO/OOO this cycle:** " + "; ".join(pto_lines) + ".")
+            parts.append("**PTO/OOO this cycle:** " + "; ".join(pto_lines) + ".")
         if sick_lines:
-            parts.append(f"**Sick days this cycle:** " + "; ".join(sick_lines) + ".")
+            parts.append("**Sick days this cycle:** " + "; ".join(sick_lines) + ".")
         if total_days:
             parts.append(f"Total {total_days} absence days. Reduced availability may impact throughput delta.")
         parts.append("")
@@ -528,9 +541,10 @@ def _s_snapshot(a: dict, prev_snapshot: dict[str, int] | None = None) -> str:
 
 def _s_activity(a: dict, config: dict, prev_activity: dict[str, int] | None = None) -> str:
     lines = [
-        "## 4. Release Progress — Activity Type Split", "",
-        "> Only tickets with Activity Type set are included. "
-        "Percentages are from the categorized total only.", "",
+        "## 4. Release Progress — Activity Type Split",
+        "",
+        "> Only tickets with Activity Type set are included. Percentages are from the categorized total only.",
+        "",
     ]
     split = a.get("activity_split", {})
     targets = config.get("activity_targets", {})
@@ -551,9 +565,9 @@ def _s_activity(a: dict, config: dict, prev_activity: dict[str, int] | None = No
         d = split[name]
         pct = d["pct"]
         tgt = targets.get(name)
-        tgt_s = f"{tgt}%" if isinstance(tgt, (int, float)) else "—"
+        tgt_s = f"{tgt}%" if isinstance(tgt, int | float) else "—"
 
-        if isinstance(tgt, (int, float)):
+        if isinstance(tgt, int | float):
             if pct >= tgt * 1.5:
                 status = "Significantly over"
             elif pct >= tgt:
@@ -598,15 +612,13 @@ def _build_activity_observations(split: dict, targets: dict, prev: dict | None) 
     if len(sorted_items) >= 2:
         top, second = sorted_items[0], sorted_items[1]
         if abs(top[1]["pct"] - second[1]["pct"]) <= 5:
-            obs.append(f"{top[0]} and {second[0]} roughly balanced at "
-                       f"{top[1]['pct']}%/{second[1]['pct']}%.")
+            obs.append(f"{top[0]} and {second[0]} roughly balanced at {top[1]['pct']}%/{second[1]['pct']}%.")
         elif top[1]["pct"] >= 60:
-            obs.append(f"{top[0]} dominates at {top[1]['pct']}% — "
-                       f"check if other categories are under-tagged.")
+            obs.append(f"{top[0]} dominates at {top[1]['pct']}% — check if other categories are under-tagged.")
 
     for name, d in split.items():
         tgt = targets.get(name)
-        if isinstance(tgt, (int, float)) and d["pct"] < tgt * 0.5:
+        if isinstance(tgt, int | float) and d["pct"] < tgt * 0.5:
             extra = f" Only {d['total']} ticket{'s' if d['total'] != 1 else ''} categorized." if d["total"] <= 2 else ""
             obs.append(f"{name} critically below {tgt}% target.{extra}")
 
@@ -615,15 +627,16 @@ def _build_activity_observations(split: dict, targets: dict, prev: dict | None) 
             prev_pct = prev.get(name)
             if prev_pct is not None and abs(d["pct"] - prev_pct) >= 10:
                 direction = "up" if d["pct"] > prev_pct else "down"
-                obs.append(f"{name} shifted {direction} significantly "
-                           f"({prev_pct}% → {d['pct']}%).")
+                obs.append(f"{name} shifted {direction} significantly ({prev_pct}% → {d['pct']}%).")
     return obs
 
 
 def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
     lines = [
-        "## 5. Risk & Attention", "",
-        "> **Note:** Epics and Testing tickets are excluded from this section.", "",
+        "## 5. Risk & Attention",
+        "",
+        "> **Note:** Epics and Testing tickets are excluded from this section.",
+        "",
     ]
 
     stale = a.get("stale_tickets", [])
@@ -633,31 +646,33 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
         for s in stale:
             days = s["days_worked"]
             recurring = "Yes" if days >= 21 else "New"
-            rows.append([_jl(s["key"]), s["summary"][:50], s["assignee"],
-                         s["status"], str(days), s["level"], recurring])
-        lines.append(_md_table(["Ticket", "Summary", "Assignee", "Status",
-                               "Days", "Level", "Recurring?"], rows))
+            rows.append(
+                [_jl(s["key"]), s["summary"][:50], s["assignee"], s["status"], str(days), s["level"], recurring]
+            )
+        lines.append(_md_table(["Ticket", "Summary", "Assignee", "Status", "Days", "Level", "Recurring?"], rows))
     else:
         lines.append("No stale tickets this week.")
     lines.append("")
 
     resolved = a.get("resolved_since_last", [])
     if resolved:
-        lines += ["### Resolved Since Last 360", "",
-                  "Previously stale items that were **resolved** this cycle:"]
+        lines += ["### Resolved Since Last 360", "", "Previously stale items that were **resolved** this cycle:"]
         for r in resolved:
-            lines.append(f"- {_jl(r.get('key', '?'))} — was {r.get('level', '?')} "
-                        f"({r.get('days_worked', '?')}d)")
+            lines.append(f"- {_jl(r.get('key', '?'))} — was {r.get('level', '?')} ({r.get('days_worked', '?')}d)")
         lines.append("")
     elif prev_stale_keys:
         current_stale = {s["key"] for s in stale}
         resolved_keys = sorted(prev_stale_keys - current_stale)
         if resolved_keys:
             # ponytail: enrich with summaries from any available ticket data
-            all_tickets = {t["key"]: t for t in
-                          a.get("doing_board", []) + a.get("completed", []) + a.get("backlog", [])}
-            lines += ["### Resolved Since Last 360", "",
-                      f"Previously stale items no longer flagged this cycle ({len(resolved_keys)}):"]
+            all_tickets = {
+                t["key"]: t for t in a.get("doing_board", []) + a.get("completed", []) + a.get("backlog", [])
+            }
+            lines += [
+                "### Resolved Since Last 360",
+                "",
+                f"Previously stale items no longer flagged this cycle ({len(resolved_keys)}):",
+            ]
             for k in resolved_keys[:6]:
                 t = all_tickets.get(k)
                 if t:
@@ -675,8 +690,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
         lines += ["### Overloaded Engineers", ""]
         rows = []
         for o in overloaded:
-            rows.append([f"**{o['name']}**", str(o["item_count"]),
-                        ", ".join(o["signals"])])
+            rows.append([f"**{o['name']}**", str(o["item_count"]), ", ".join(o["signals"])])
         lines.append(_md_table(["Engineer", "Items", "Signal"], rows))
         lines.append("")
 
@@ -693,8 +707,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
     if buried:
         lines += ["### Buried Criticals", ""]
         for b in buried:
-            lines.append(f"- {_jl(b['key'])} — {b['priority']} at backlog rank "
-                        f"#{b['rank']}: {b['summary']}")
+            lines.append(f"- {_jl(b['key'])} — {b['priority']} at backlog rank #{b['rank']}: {b['summary']}")
         lines.append("")
 
     lines += ["---", ""]
@@ -703,8 +716,10 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
 
 def _s_epic_progress(a: dict, prev_epics: dict[str, int] | None = None) -> str:
     lines = [
-        "## 5.5. Epic Progress", "",
-        "> Epics on the doing board. Not subject to stale detection.", "",
+        "## 5.5. Epic Progress",
+        "",
+        "> Epics on the doing board. Not subject to stale detection.",
+        "",
     ]
     epics = a.get("epic_progress", [])
     if not epics:
@@ -733,8 +748,7 @@ def _s_epic_progress(a: dict, prev_epics: dict[str, int] | None = None) -> str:
 
         rows = []
         if done_children:
-            rows.append(["Done", str(len(done_children)),
-                        _condense_keys([c.get("key", "") for c in done_children])])
+            rows.append(["Done", str(len(done_children)), _condense_keys([c.get("key", "") for c in done_children])])
         for c in active_children:
             assignee = _get_name(c, "assignee", "Unassigned")
             detail = f"{_jl(c.get('key', ''))} — {c.get('summary', '')[:50]} ({assignee})"
@@ -764,7 +778,7 @@ def _condense_keys(keys: list[str]) -> str:
     prefix = prefix_match.group(1)
     parts = [keys[0]]
     for k in keys[1:]:
-        parts.append(k[len(prefix):] if k.startswith(prefix) else k)
+        parts.append(k[len(prefix) :] if k.startswith(prefix) else k)
     return ", ".join(parts)
 
 
@@ -772,8 +786,7 @@ def _s_strats(a: dict, config: dict, prev_strats: dict[str, str] | None = None) 
     strats = a.get("strats", {})
     has_split = bool(config.get("strats_committed_id") or config.get("strats_planning_id"))
     signals = {s["key"]: s for s in a.get("strat_signals", [])}
-    lines = ["## 6. STRAT / Feature Progress", "",
-             "> **Release Pending STRATs are excluded.**", ""]
+    lines = ["## 6. STRAT / Feature Progress", "", "> **Release Pending STRATs are excluded.**", ""]
 
     def _strat_signal(key: str, status: str) -> str:
         sig = signals.get(key)
@@ -799,8 +812,7 @@ def _s_strats(a: dict, config: dict, prev_strats: dict[str, str] | None = None) 
             if len(summary) > 50:
                 summary = summary[:47] + "..."
             comment = _clean_status_summary(s.get("status_summary") or "")
-            row = [f"{_jl(k)} — {summary}", s.get("status", ""),
-                   s.get("color", "—"), comment]
+            row = [f"{_jl(k)} — {summary}", s.get("status", ""), s.get("color", "—"), comment]
             if show_signals:
                 row.append(_strat_signal(k, s.get("status", "")))
             rows.append(row)
@@ -808,12 +820,18 @@ def _s_strats(a: dict, config: dict, prev_strats: dict[str, str] | None = None) 
 
     if has_split:
         lines += [
-            "### 5.1 Committed Work", "",
-            "> STRATs with a fix version — actively committed.", "",
-            _strat_rows(strats.get("committed", []), show_signals=True), "",
-            "### 5.2 Planning Items", "",
-            "> Informational only — no alerts.", "",
-            _strat_rows(strats.get("planning", []), show_signals=False), "",
+            "### 5.1 Committed Work",
+            "",
+            "> STRATs with a fix version — actively committed.",
+            "",
+            _strat_rows(strats.get("committed", []), show_signals=True),
+            "",
+            "### 5.2 Planning Items",
+            "",
+            "> Informational only — no alerts.",
+            "",
+            _strat_rows(strats.get("planning", []), show_signals=False),
+            "",
         ]
     else:
         all_s = strats.get("committed", []) + strats.get("planning", [])
@@ -866,7 +884,7 @@ def _build_strat_key_signals(strats: list, signals: dict) -> list[str]:
         issues = ", ".join(f"{n} {c}" for c, n in non_green.items())
         out.append(f"Color issues: {issues}.")
     elif green and green + not_selected == sum(by_color.values()):
-        out.append(f"All active STRATs remain **Green**. No regressions.")
+        out.append("All active STRATs remain **Green**. No regressions.")
 
     if not_selected:
         out.append(f"{not_selected} STRATs **Not Selected** for this release.")
@@ -883,14 +901,20 @@ def _s_pr_status(a: dict) -> str:
     lines = ["## 8. PR Status", ""]
 
     lines += ["### 8.1 Composite PR Status by Ticket (In Review)", ""]
-    review = [t for t in a.get("doing_board", [])
-              if (t.get("status") or "").lower() in ("review", "in review")]
+    review = [t for t in a.get("doing_board", []) if (t.get("status") or "").lower() in ("review", "in review")]
     if review:
         rows = []
         for t in review:
             prl = t.get("pr_links", [])
-            rows.append([_jl(t["key"]), t.get("summary", "")[:60], str(len(prl)),
-                        t.get("composite_pr_status", "NO_PRS"), _pr_cell(prl)])
+            rows.append(
+                [
+                    _jl(t["key"]),
+                    t.get("summary", "")[:60],
+                    str(len(prl)),
+                    t.get("composite_pr_status", "NO_PRS"),
+                    _pr_cell(prl),
+                ]
+            )
         lines.append(_md_table(["Ticket", "Summary", "PRs", "Composite Status", "Details"], rows))
     else:
         lines.append("No tickets in Review.")
@@ -908,15 +932,19 @@ def _s_pr_status(a: dict) -> str:
             url = pr.get("url", "")
             num = pr.get("number", "")
             health = pr.get("pr_health", {})
-            health_str = health.get("detail", health.get("category", "—")) if isinstance(health, dict) else str(health or "—")
-            gh_rows.append([
-                f"[#{num}]({url})" if url else f"#{num}",
-                pr.get("repo", repo_or_cat),
-                pr.get("author", ""),
-                f"{pr.get('age_days', '?')}d",
-                f"{pr.get('days_since_owner_update', '?')}d",
-                health_str,
-            ])
+            health_str = (
+                health.get("detail", health.get("category", "—")) if isinstance(health, dict) else str(health or "—")
+            )
+            gh_rows.append(
+                [
+                    f"[#{num}]({url})" if url else f"#{num}",
+                    pr.get("repo", repo_or_cat),
+                    pr.get("author", ""),
+                    f"{pr.get('age_days', '?')}d",
+                    f"{pr.get('days_since_owner_update', '?')}d",
+                    health_str,
+                ]
+            )
     # ponytail: fallback — extract open PRs from ticket pr_links when collector returns empty
     if not gh_rows:
         fallback_rows = []
@@ -926,11 +954,14 @@ def _s_pr_status(a: dict) -> str:
                     url = p.get("url", "")
                     num = url.rstrip("/").split("/")[-1] if url else "?"
                     repo = url.split("github.com/")[-1].split("/pull/")[0] if url and "github.com/" in url else "?"
-                    fallback_rows.append([
-                        f"[#{num}]({url})" if url else f"#{num}",
-                        repo, _get_name(t, "assignee", "—"),
-                        f"Linked from {t['key']}",
-                    ])
+                    fallback_rows.append(
+                        [
+                            f"[#{num}]({url})" if url else f"#{num}",
+                            repo,
+                            _get_name(t, "assignee", "—"),
+                            f"Linked from {t['key']}",
+                        ]
+                    )
         if fallback_rows:
             lines.append("> PR details from ticket links (GitHub API returned no data).")
             lines.append("")
@@ -954,15 +985,19 @@ def _s_pr_status(a: dict) -> str:
                 continue
             url = mr.get("url", "")
             num = mr.get("number", mr.get("iid", ""))
-            gl_rows.append([
-                f"[!{num}]({url})" if url else f"!{num}", proj,
-                mr.get("author", ""), mr.get("state", "open"),
-                f"{mr.get('age_days', '?')}d", str(mr.get("approvals", "—")),
-                mr.get("pipeline_status", "—"),
-            ])
+            gl_rows.append(
+                [
+                    f"[!{num}]({url})" if url else f"!{num}",
+                    proj,
+                    mr.get("author", ""),
+                    mr.get("state", "open"),
+                    f"{mr.get('age_days', '?')}d",
+                    str(mr.get("approvals", "—")),
+                    mr.get("pipeline_status", "—"),
+                ]
+            )
     if gl_rows:
-        lines.append(_md_table(["MR", "Project", "Author", "State", "Age",
-                               "Approvals", "Pipeline"], gl_rows))
+        lines.append(_md_table(["MR", "Project", "Author", "State", "Age", "Approvals", "Pipeline"], gl_rows))
     else:
         lines.append("No open GitLab MRs.")
     lines.append("")
@@ -993,14 +1028,14 @@ def _s_pr_status(a: dict) -> str:
 
 def _s_doing_board(a: dict, config: dict) -> str:
     lines = [
-        "## 9. Doing Board by Person", "",
-        "> Only roster members and unassigned tickets. Epics excluded — see Section 5.5. "
-        "Third-party in Section 13.", "",
+        "## 9. Doing Board by Person",
+        "",
+        "> Only roster members and unassigned tickets. Epics excluded — see Section 5.5. Third-party in Section 13.",
+        "",
     ]
     pp = a.get("per_person", {})
     roster = config.get("roster", [])
-    names = sorted([m["name"] for m in roster],
-                   key=lambda n: n.split()[0].lower() if n.split() else n.lower())
+    names = sorted([m["name"] for m in roster], key=lambda n: n.split()[0].lower() if n.split() else n.lower())
 
     for name in names:
         data = pp.get(name)
@@ -1026,8 +1061,11 @@ def _s_doing_board(a: dict, config: dict) -> str:
         if data.get("is_qe") and data.get("testing_activity"):
             tx = data["testing_activity"]
             keys = ", ".join(_jl(t.get("key", "?")) for t in tx)
-            lines += [f"**Testing Activity (since last 360):** "
-                     f"{len(tx)} ticket{'s' if len(tx) != 1 else ''} transitioned to Testing: {keys}", ""]
+            lines += [
+                f"**Testing Activity (since last 360):** "
+                f"{len(tx)} ticket{'s' if len(tx) != 1 else ''} transitioned to Testing: {keys}",
+                "",
+            ]
 
         tickets = data.get("tickets", [])
         if tickets:
@@ -1035,14 +1073,23 @@ def _s_doing_board(a: dict, config: dict) -> str:
             for t in tickets:
                 days = t.get("days_worked", 0)
                 level = "—"
-                if not (_get_name(t, "issuetype").lower() == "epic"
-                        or _get_name(t, "status").lower() in ("testing", "in testing")
-                        or "learning" in (t.get("summary") or "").lower()):
+                if not (
+                    _get_name(t, "issuetype").lower() == "epic"
+                    or _get_name(t, "status").lower() in ("testing", "in testing")
+                    or "learning" in (t.get("summary") or "").lower()
+                ):
                     level = _stale_level(days) or "OK"
-                rows.append([_jl(t["key"]), t.get("summary", "")[:50], t.get("status", ""),
-                           str(days), _pr_cell(t.get("pr_links", [])), level])
-            lines.append(_md_table(["Ticket", "Summary", "Status", "Days Working",
-                                   "PR Status", "Level"], rows))
+                rows.append(
+                    [
+                        _jl(t["key"]),
+                        t.get("summary", "")[:50],
+                        t.get("status", ""),
+                        str(days),
+                        _pr_cell(t.get("pr_links", [])),
+                        level,
+                    ]
+                )
+            lines.append(_md_table(["Ticket", "Summary", "Status", "Days Working", "PR Status", "Level"], rows))
         else:
             lines.append("No active tickets.")
         lines.append("")
@@ -1054,18 +1101,23 @@ def _s_doing_board(a: dict, config: dict) -> str:
         if completions:
             comp_strs = [f"{c.get('key', '')} ({c.get('summary', '')[:40]})" for c in completions[:8]]
             suffix = f" (+{len(completions) - 8} more)" if len(completions) > 8 else ""
-            lines += [f"> Completed {len(completions)} tickets this cycle: "
-                     f"{', '.join(comp_strs)}{suffix}.", ""]
+            lines += [f"> Completed {len(completions)} tickets this cycle: {', '.join(comp_strs)}{suffix}.", ""]
 
     lines += ["### Unassigned", ""]
     unassigned = pp.get("Unassigned", {}).get("tickets", [])
     if unassigned:
-        rows = [[_jl(t["key"]), t.get("summary", "")[:50], t.get("status", ""),
+        rows = [
+            [
+                _jl(t["key"]),
+                t.get("summary", "")[:50],
+                t.get("status", ""),
                 str(t.get("days_worked", 0)),
-                _get_name(t, "priority"), "Needs an owner"]
-               for t in unassigned]
-        lines.append(_md_table(["Ticket", "Summary", "Status", "Days in Status",
-                               "Priority", "Notes"], rows))
+                _get_name(t, "priority"),
+                "Needs an owner",
+            ]
+            for t in unassigned
+        ]
+        lines.append(_md_table(["Ticket", "Summary", "Status", "Days in Status", "Priority", "Notes"], rows))
     else:
         lines.append("No unassigned tickets on the doing board.")
     lines.append("")
@@ -1074,24 +1126,36 @@ def _s_doing_board(a: dict, config: dict) -> str:
 
 def _s_in_review(a: dict, config: dict) -> str:
     lines = [
-        "## 10. In Review", "",
-        "> Only roster + unassigned. Composite PR status shown.", "",
+        "## 10. In Review",
+        "",
+        "> Only roster + unassigned. Composite PR status shown.",
+        "",
     ]
     roster = config.get("roster", [])
-    review = [t for t in a.get("doing_board", [])
-              if (t.get("status") or "").lower() in ("review", "in review")
-              and _classify(t, roster) != "THIRD-PARTY"]
+    review = [
+        t
+        for t in a.get("doing_board", [])
+        if (t.get("status") or "").lower() in ("review", "in review") and _classify(t, roster) != "THIRD-PARTY"
+    ]
     if review:
         rows = []
         for t in review:
-            rows.append([
-                _jl(t["key"]), t.get("summary", "")[:50],
-                _get_name(t, "assignee", "Unassigned"),
-                str(t.get("days_worked", 0)), _pr_cell(t.get("pr_links", [])),
-                t.get("composite_pr_status", "—"), _pr_blocker(t),
-            ])
-        lines.append(_md_table(["Ticket", "Summary", "Assignee", "Days Working",
-                               "PR Links", "Composite Status", "Blocker"], rows))
+            rows.append(
+                [
+                    _jl(t["key"]),
+                    t.get("summary", "")[:50],
+                    _get_name(t, "assignee", "Unassigned"),
+                    str(t.get("days_worked", 0)),
+                    _pr_cell(t.get("pr_links", [])),
+                    t.get("composite_pr_status", "—"),
+                    _pr_blocker(t),
+                ]
+            )
+        lines.append(
+            _md_table(
+                ["Ticket", "Summary", "Assignee", "Days Working", "PR Links", "Composite Status", "Blocker"], rows
+            )
+        )
     else:
         lines.append("No tickets in Review.")
     lines += ["", "Legend: ✅ = merged, ⏳ = open, ❌ = closed/abandoned", ""]
@@ -1107,9 +1171,16 @@ def _s_backlog(a: dict) -> str:
         for i, t in enumerate(backlog[:15]):
             k = t.get("key", "")
             flag = "BURIED CRITICAL" if k in buried_keys else ""
-            rows.append([str(i + 1), _jl(k), t.get("summary", "")[:50],
-                        _get_name(t, "priority"),
-                        _get_name(t, "assignee", "Unassigned"), flag])
+            rows.append(
+                [
+                    str(i + 1),
+                    _jl(k),
+                    t.get("summary", "")[:50],
+                    _get_name(t, "priority"),
+                    _get_name(t, "assignee", "Unassigned"),
+                    flag,
+                ]
+            )
         lines.append(_md_table(["Rank", "Ticket", "Summary", "Priority", "Assignee", "Flags"], rows))
     else:
         lines.append("Backlog is empty.")
@@ -1121,10 +1192,15 @@ def _s_completed(a: dict) -> str:
     lines = ["## 12. Completed Since Last 360", ""]
     completed = a.get("completed", [])
     if completed:
-        rows = [[_jl(t.get("key", "")), t.get("summary", "")[:60],
+        rows = [
+            [
+                _jl(t.get("key", "")),
+                t.get("summary", "")[:60],
                 _get_name(t, "assignee", "—"),
-                _get_name(t, "issuetype", "—")]
-               for t in completed]
+                _get_name(t, "issuetype", "—"),
+            ]
+            for t in completed
+        ]
         lines.append(_md_table(["Ticket", "Summary", "Assignee", "Type"], rows))
         lines.append("")
         by_person: dict[str, int] = {}
@@ -1139,7 +1215,6 @@ def _s_completed(a: dict) -> str:
     return "\n".join(lines)
 
 
-
 def _s_learning(a: dict) -> str:
     la = a.get("learning_analysis", {})
     if not la:
@@ -1149,8 +1224,12 @@ def _s_learning(a: dict) -> str:
     if not missing and not by_person:
         return ""
 
-    lines = ["## 12.5. Learning Tickets", "",
-             "> Learning tickets stay In Progress during the release cycle and are excluded from stale detection.", ""]
+    lines = [
+        "## 12.5. Learning Tickets",
+        "",
+        "> Learning tickets stay In Progress during the release cycle and are excluded from stale detection.",
+        "",
+    ]
 
     if by_person:
         rows = []
@@ -1178,19 +1257,34 @@ def _s_strats_readiness(a: dict) -> str:
     if not ready and not needs_signoff:
         return ""
 
-    lines = ["## 7. New STRATs — Readiness Pipeline", "",
-             "> STRATs in Backlog/New status. Shows what's coming next.", ""]
-    lines.append(_md_table(["Status", "Count"], [
-        ["Ready for Team (staff engineer signed off)", str(len(ready))],
-        ["Needs Staff Engineer Signoff", str(len(needs_signoff))],
-    ]))
+    lines = [
+        "## 7. New STRATs — Readiness Pipeline",
+        "",
+        "> STRATs in Backlog/New status. Shows what's coming next.",
+        "",
+    ]
+    lines.append(
+        _md_table(
+            ["Status", "Count"],
+            [
+                ["Ready for Team (staff engineer signed off)", str(len(ready))],
+                ["Needs Staff Engineer Signoff", str(len(needs_signoff))],
+            ],
+        )
+    )
     lines.append("")
 
     if ready:
         lines += ["### Ready for Team", ""]
-        rows = [[_jl(s.get("key", "")), s.get("summary", "")[:60],
-                 _get_name(s, "assignee", "Unassigned"), s.get("status", "")]
-                for s in ready]
+        rows = [
+            [
+                _jl(s.get("key", "")),
+                s.get("summary", "")[:60],
+                _get_name(s, "assignee", "Unassigned"),
+                s.get("status", ""),
+            ]
+            for s in ready
+        ]
         lines.append(_md_table(["Key", "Summary", "Assignee", "Status"], rows))
         lines.append("")
 
@@ -1200,29 +1294,42 @@ def _s_strats_readiness(a: dict) -> str:
 
 def _s_third_party(a: dict) -> str:
     lines = [
-        "## 13. Third-Party Assigned Tickets", "",
-        "> Tickets assigned to people outside the team roster.", "",
+        "## 13. Third-Party Assigned Tickets",
+        "",
+        "> Tickets assigned to people outside the team roster.",
+        "",
     ]
     tp = a.get("third_party_tickets", [])
     if tp:
-        rows = [[_jl(t.get("key", "")), t.get("summary", "")[:50], t.get("status", ""),
+        rows = [
+            [
+                _jl(t.get("key", "")),
+                t.get("summary", "")[:50],
+                t.get("status", ""),
                 _get_name(t, "assignee", "?"),
-                str(t.get("days_worked", 0)), "Third-party"] for t in tp]
-        lines.append(_md_table(["Ticket", "Summary", "Status", "Assignee",
-                               "Days in Status", "Notes"], rows))
+                str(t.get("days_worked", 0)),
+                "Third-party",
+            ]
+            for t in tp
+        ]
+        lines.append(_md_table(["Ticket", "Summary", "Status", "Assignee", "Days in Status", "Notes"], rows))
         lines.append("")
 
         def _ct(*statuses: str) -> int:
             return sum(1 for t in tp if (t.get("status") or "").lower() in statuses)
 
         lines += [
-            "**Third-party subtotals:**", "",
-            _md_table(["Metric", "Count"], [
-                ["In Progress", str(_ct("in progress"))],
-                ["In Review", str(_ct("review", "in review"))],
-                ["Testing", str(_ct("testing", "in testing"))],
-                ["Total", str(len(tp))],
-            ]),
+            "**Third-party subtotals:**",
+            "",
+            _md_table(
+                ["Metric", "Count"],
+                [
+                    ["In Progress", str(_ct("in progress"))],
+                    ["In Review", str(_ct("review", "in review"))],
+                    ["Testing", str(_ct("testing", "in testing"))],
+                    ["Total", str(len(tp))],
+                ],
+            ),
         ]
     else:
         lines.append("No third-party assigned tickets on the board this week.")
@@ -1245,10 +1352,15 @@ def _s_links(config: dict) -> str:
     return "\n".join(lines)
 
 
-def generate_report(analyzed: dict, config: dict, test_mode: bool,
-                    prev_360_url: str | None, collection_time: str,
-                    prev_360_title: str | None = None,
-                    prev_report_text: str | None = None) -> tuple[str, str]:
+def generate_report(
+    analyzed: dict,
+    config: dict,
+    test_mode: bool,
+    prev_360_url: str | None,
+    collection_time: str,
+    prev_360_title: str | None = None,
+    prev_report_text: str | None = None,
+) -> tuple[str, str]:
     """Returns (report_markdown, emoji) so callers can use the emoji in filenames."""
     prev_snapshot = _parse_prev_snapshot(prev_report_text) if prev_report_text else None
     prev_activity = _parse_prev_activity(prev_report_text) if prev_report_text else None
@@ -1264,8 +1376,7 @@ def generate_report(analyzed: dict, config: dict, test_mode: bool,
         config = {**config, "swimlane_filter": analyzed["swimlane_filter"]}
 
     sections = [
-        _header(config, test_mode, prev_360_url, collection_time,
-                prev_360_title, trend=trend, emoji=emoji),
+        _header(config, test_mode, prev_360_url, collection_time, prev_360_title, trend=trend, emoji=emoji),
         _s_wins(analyzed),
         _s_agenda(analyzed),
         _s_snapshot(analyzed, prev_snapshot=prev_snapshot),

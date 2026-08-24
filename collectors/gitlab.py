@@ -40,7 +40,6 @@ def collect_gitlab_mrs(config: dict) -> dict:
         return {"open_mrs": []}
 
     repos = config.get("gitlab_repos", [])
-    roster = config.get("roster", [])
     if not repos:
         log.info("No GitLab repos in config, skipping")
         return {"open_mrs": []}
@@ -50,9 +49,16 @@ def collect_gitlab_mrs(config: dict) -> dict:
     for repo in repos:
         project_path = repo.replace("/", "%2F")
         proc = subprocess.run(
-            ["glab", "api", f"projects/{project_path}/merge_requests?state=opened&per_page=100",
-             "--hostname", gitlab_host],
-            capture_output=True, text=True, timeout=60,
+            [
+                "glab",
+                "api",
+                f"projects/{project_path}/merge_requests?state=opened&per_page=100",
+                "--hostname",
+                gitlab_host,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
 
         if proc.returncode != 0:
@@ -70,18 +76,20 @@ def collect_gitlab_mrs(config: dict) -> dict:
             created = _parse_iso(mr.get("created_at"))
             updated = _parse_iso(mr.get("updated_at"))
 
-            open_mrs.append({
-                "repo": repo,
-                "iid": mr.get("iid"),
-                "title": mr.get("title", ""),
-                "author": author,
-                "url": mr.get("web_url", ""),
-                "created_at": mr.get("created_at"),
-                "age_days": _days_since(created) if created else 0,
-                "updated_at": mr.get("updated_at"),
-                "days_since_update": _days_since(updated) if updated else 0,
-                "state": mr.get("state", "opened"),
-                "pipeline_status": mr.get("head_pipeline", {}).get("status") if mr.get("head_pipeline") else None,
-            })
+            open_mrs.append(
+                {
+                    "repo": repo,
+                    "iid": mr.get("iid"),
+                    "title": mr.get("title", ""),
+                    "author": author,
+                    "url": mr.get("web_url", ""),
+                    "created_at": mr.get("created_at"),
+                    "age_days": _days_since(created) if created else 0,
+                    "updated_at": mr.get("updated_at"),
+                    "days_since_update": _days_since(updated) if updated else 0,
+                    "state": mr.get("state", "opened"),
+                    "pipeline_status": mr.get("head_pipeline", {}).get("status") if mr.get("head_pipeline") else None,
+                }
+            )
 
     return {"open_mrs": open_mrs}
