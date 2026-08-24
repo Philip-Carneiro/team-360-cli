@@ -59,6 +59,9 @@ class TeamConfig:
     # PTO calendars (Google Calendar IDs from team.md)
     pto_calendar_ids: list[str] = field(default_factory=list)
 
+    # Main swimlane (fix version name for 360 reports)
+    main_swimlane: str = ""
+
     workspace_path: str = ""
 
 
@@ -195,6 +198,7 @@ def _parse_team_md(text: str, config: TeamConfig) -> None:
     config.leader_of_flow = _field(text, "Leader of Flow") or ""
     config.release_leaders = _field(text, "Release Leaders") or ""
     config.jira_label = _field(text, "Jira Label") or ""
+    config.main_swimlane = _field(text, "Main Swimlane") or ""
 
     comp = _field(text, "Jira Components")
     if comp:

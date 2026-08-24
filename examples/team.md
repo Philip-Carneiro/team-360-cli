@@ -7,6 +7,7 @@
 **Release Leaders:** Alice Williams, Carlos Martinez
 **Jira Label:** `dashboard-alpha`
 **Jira Components:** Platform Dashboard (required on every ticket)
+**Main Swimlane:** 2.5 GA PRODUCT RELEASE (JQL USED FOR MAIN SWIMLANE)
 
 ## Boards
 

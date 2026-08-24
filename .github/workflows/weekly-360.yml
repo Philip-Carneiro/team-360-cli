@@ -1,0 +1,110 @@
+name: Weekly 360 Report
+
+on:
+  schedule:
+    - cron: '0 5 * * 4'  # Thursday 5AM UTC
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (--test flag)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create teams.json from secret
+        env:
+          TEAMS_JSON: ${{ secrets.TEAMS_JSON }}
+        run: echo "$TEAMS_JSON" > teams.json
+
+      - name: Generate 360 report
+        id: report
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          CONFLUENCE_USERNAME: ${{ secrets.JIRA_EMAIL }}
+          CONFLUENCE_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TEST_MODE: ${{ inputs.test_mode }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, re, subprocess, sys
+
+          from config import load_config
+
+          teams = json.loads(open("teams.json").read())
+          name = list(teams.keys())[0]
+          config = load_config(sources=teams[name])
+          swimlane = config.main_swimlane
+          team_arg = name.split()[-1].lower()
+          test_mode = os.environ.get("INPUT_TEST_MODE", "false") == "true"
+
+          urls = []
+
+          def run_report(extra_args):
+              cmd = ["python3", "main.py", "--team", team_arg] + extra_args
+              print(f"Running: {' '.join(cmd)}", flush=True)
+              proc = subprocess.run(cmd, capture_output=True, text=True)
+              print(proc.stdout)
+              if proc.stderr:
+                  print(proc.stderr, file=sys.stderr)
+              if proc.returncode != 0:
+                  sys.exit(proc.returncode)
+              m = re.search(r"Confluence: (\S+)", proc.stdout)
+              if m:
+                  urls.append(m.group(1))
+
+          sl = ["--swimlane", swimlane] if swimlane else ["--swimlane", "all"]
+          args = ["--test"] + sl if test_mode else sl
+
+          print(f"Swimlane: {swimlane or 'all'} | Test: {test_mode}")
+          run_report(args)
+
+          out = os.environ.get("GITHUB_OUTPUT", "")
+          if urls and out:
+              with open(out, "a") as f:
+                  f.write(f"confluence_url={urls[-1]}\n")
+
+          if urls:
+              print(f"\n360 Report: {urls[-1]}")
+          PYEOF
+
+      - name: Post Confluence link to Slack
+        if: steps.report.outputs.confluence_url
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_360_REPORT }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+
+          url = "${{ steps.report.outputs.confluence_url }}"
+          if not url:
+              print("No Confluence URL to post")
+              exit(0)
+
+          text = f":memo: *360 Report published*\n{url}"
+          payload = json.dumps({"text": text}).encode()
+          webhook = os.environ["SLACK_WEBHOOK_URL"]
+          req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"})
+          try:
+              urllib.request.urlopen(req)
+              print("Posted to Slack")
+          except Exception as e:
+              print(f"Slack post failed: {e}")
+          PYEOF
