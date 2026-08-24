@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import re
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
-
-import os
 
 import requests
 
@@ -20,8 +18,7 @@ TOKEN_FILE = Path.home() / ".config" / "google-calendar-token.json"
 _PTO_KEYWORDS = {"pto", "ooo", "leave", "vacation", "holiday", "off", "out of office", "annual leave"}
 _SICK_KEYWORDS = {"sick", "sickday", "sick day", "sick leave", "medical", "unwell", "ill"}
 # ponytail: generic titles with no name attached — skip these
-_SKIP_EXACT = {"ooo", "pto", "office hours", "meeting", "standup", "sync", "1:1", "team",
-               "sick", "sickday", "sick day"}
+_SKIP_EXACT = {"ooo", "pto", "office hours", "meeting", "standup", "sync", "1:1", "team", "sick", "sickday", "sick day"}
 
 
 def _load_google_creds() -> tuple[str, str, str] | None:
@@ -35,8 +32,11 @@ def _load_google_creds() -> tuple[str, str, str] | None:
 
     # ponytail: fallback to token file for local dev
     if not TOKEN_FILE.exists():
-        log.warning("Google Calendar: no env vars (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "
-                     "GOOGLE_REFRESH_TOKEN) and no token file at %s", TOKEN_FILE)
+        log.warning(
+            "Google Calendar: no env vars (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "
+            "GOOGLE_REFRESH_TOKEN) and no token file at %s",
+            TOKEN_FILE,
+        )
         return None
     try:
         creds = json.loads(TOKEN_FILE.read_text())
@@ -61,12 +61,16 @@ def _refresh_token() -> str | None:
     client_id, client_secret, refresh_token = creds
 
     try:
-        r = requests.post("https://oauth2.googleapis.com/token", data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        }, timeout=15)
+        r = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=15,
+        )
         r.raise_for_status()
         return r.json().get("access_token")
     except Exception as e:
@@ -143,8 +147,9 @@ def _parse_event_dates(event: dict) -> list[str]:
     return []
 
 
-def collect_absences(calendar_ids: list[str], roster: list[dict],
-                     since_date: str, until_date: str | None = None) -> dict[str, dict[str, list[str]]]:
+def collect_absences(
+    calendar_ids: list[str], roster: list[dict], since_date: str, until_date: str | None = None
+) -> dict[str, dict[str, list[str]]]:
     """Collect absences from Google Calendar, classified by type.
 
     Returns:
@@ -187,8 +192,9 @@ def collect_absences(calendar_ids: list[str], roster: list[dict],
 
 
 # ponytail: backwards compat — old callers can still use collect_pto
-def collect_pto(calendar_ids: list[str], roster: list[dict],
-                since_date: str, until_date: str | None = None) -> dict[str, list[str]]:
+def collect_pto(
+    calendar_ids: list[str], roster: list[dict], since_date: str, until_date: str | None = None
+) -> dict[str, list[str]]:
     """Legacy wrapper: returns flat {name: [dates]} merging all absence types."""
     absences = collect_absences(calendar_ids, roster, since_date, until_date)
     flat: dict[str, list[str]] = {}

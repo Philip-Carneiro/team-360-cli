@@ -102,7 +102,6 @@ def _parse_table_rows(text: str, header_pattern: str, col_count: int = 0) -> lis
         return []
     values: list[str] = []
     found_header = False
-    header_consumed = False
     for line in lines:
         stripped = line.strip()
         if not found_header:
@@ -124,7 +123,7 @@ def _parse_table_rows(text: str, header_pattern: str, col_count: int = 0) -> lis
         if v.lower() in stop_words or v.startswith("#"):
             break
         cleaned.append(v)
-    return [cleaned[i:i + col_count] for i in range(0, len(cleaned) - col_count + 1, col_count)]
+    return [cleaned[i : i + col_count] for i in range(0, len(cleaned) - col_count + 1, col_count)]
 
 
 def _extract_board_id(url: str) -> str:
@@ -265,7 +264,7 @@ def _html_tables_to_md(html: str) -> str:
     pos = 0
     for tm in re.finditer(r"<table[^>]*>(.*?)</table>", html, re.DOTALL | re.IGNORECASE):
         # text before the table
-        before = html[pos:tm.start()]
+        before = html[pos : tm.start()]
         result_parts.append(_strip_html(before))
         # parse table
         table_html = tm.group(1)
@@ -308,8 +307,7 @@ def _fetch_confluence_page(page_id: str) -> str:
     """Fetch a Confluence page's content, converting tables to markdown format."""
     import requests
 
-    base = (os.environ.get("CONFLUENCE_URL")
-            or os.environ.get("JIRA_BASE_URL", "").rstrip("/") + "/wiki")
+    base = os.environ.get("CONFLUENCE_URL") or os.environ.get("JIRA_BASE_URL", "").rstrip("/") + "/wiki"
     user = os.environ.get("CONFLUENCE_USERNAME") or os.environ.get("JIRA_EMAIL", "")
     token = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("JIRA_API_TOKEN", "")
 

@@ -149,7 +149,8 @@ def _find_prev_report_text() -> str | None:
             continue
         files = sorted(
             [f for f in d.iterdir() if f.suffix == ".md" and "-test" not in f.name.lower()],
-            key=lambda f: f.stat().st_mtime, reverse=True,
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
         )
         if files:
             log.info("Previous report for delta: %s", files[0].name)
@@ -160,7 +161,8 @@ def _find_prev_report_text() -> str | None:
             continue
         files = sorted(
             [f for f in d.iterdir() if f.suffix == ".md"],
-            key=lambda f: f.stat().st_mtime, reverse=True,
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
         )
         if files:
             log.info("Previous report (test) for delta: %s", files[0].name)
@@ -168,23 +170,34 @@ def _find_prev_report_text() -> str | None:
     return None
 
 
-def run(workspace: str | None = None, test_mode: bool = False,
-        suffix: str = "", sources: dict[str, str] | None = None,
-        swimlane: str | None = "ask") -> None:
-    from config import load_config
-    from collectors.jira import (
-        collect_doing_board, collect_backlog, collect_bugs, collect_strats,
-        collect_completed, collect_activity_type, collect_testing_transitions,
-        collect_epic_progress, collect_active_sprint, collect_learning_tickets,
-        collect_board_swimlanes,
-    )
+def run(
+    workspace: str | None = None,
+    test_mode: bool = False,
+    suffix: str = "",
+    sources: dict[str, str] | None = None,
+    swimlane: str | None = "ask",
+) -> None:
+    from collectors.calendar import collect_absences
     from collectors.github import collect_github_prs
     from collectors.gitlab import collect_gitlab_mrs
-    from collectors.calendar import collect_absences
+    from collectors.jira import (
+        collect_active_sprint,
+        collect_activity_type,
+        collect_backlog,
+        collect_board_swimlanes,
+        collect_bugs,
+        collect_completed,
+        collect_doing_board,
+        collect_epic_progress,
+        collect_learning_tickets,
+        collect_strats,
+        collect_testing_transitions,
+    )
+    from config import load_config
     from heuristics import apply_heuristics
-    from report import generate_report
+    from publishers.confluence import fetch_previous_360
     from publishers.vault import save_to_vault
-    from publishers.confluence import fetch_previous_360, publish
+    from report import generate_report
 
     # 1. Load config
     print("\nLoading team configuration...", flush=True)
@@ -211,6 +224,7 @@ def run(workspace: str | None = None, test_mode: bool = False,
     for b in config.boards:
         if "bug" in b.name.lower():
             import re
+
             m = re.search(r"filter[=/](\d+)", b.url)
             if m:
                 bugs_filter_id = m.group(1)
@@ -219,12 +233,15 @@ def run(workspace: str | None = None, test_mode: bool = False,
             doing_board_name = b.name
             doing_board_id = b.board_id
 
-    roster_dicts = [{"name": r.name, "role": r.role, "location": getattr(r, "location", ""),
-                     "email": getattr(r, "email", "")} for r in config.roster]
+    roster_dicts = [
+        {"name": r.name, "role": r.role, "location": getattr(r, "location", ""), "email": getattr(r, "email", "")}
+        for r in config.roster
+    ]
 
     repos_list = []
     for stream, url in config.repo_mapping.items():
         import re
+
         m = re.match(r"https://github\.com/(.+)", url)
         if m:
             repos_list.append({"name": m.group(1), "stream": stream, "platform": "github"})
@@ -266,6 +283,7 @@ def run(workspace: str | None = None, test_mode: bool = False,
                 prev_360_title = prev_data.get("title", "")
                 title = prev_360_title
                 import re
+
                 m = re.search(r"(\d{2})/(\d{2})/(\d{4})", title)
                 if m:
                     prev_360_date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
@@ -303,6 +321,7 @@ def run(workspace: str | None = None, test_mode: bool = False,
 
     # 4.1. Collect data in parallel
     print("Collecting data (JIRA, GitHub, GitLab)...", flush=True)
+
     def _jira_collect():
         doing = collect_doing_board(cfg, auth, prev_360_date, swimlane_jql=swimlane_jql)
         epics = [t for t in doing if t.get("issuetype") == "Epic"]
@@ -419,7 +438,8 @@ def run(workspace: str | None = None, test_mode: bool = False,
     # Confluence save
     if cfg.get("confluence_root_dir_id"):
         try:
-            from publishers.confluence import publish_360, _md_to_html
+            from publishers.confluence import _md_to_html, publish_360
+
             conf_url_base = cfg["confluence_url"]
             root_id = int(cfg["confluence_root_dir_id"])
             space_key = cfg.get("confluence_space_key", "")
@@ -446,8 +466,12 @@ def main() -> None:
     parser.add_argument("--workspace", type=str, default=None, help="Path to team workspace (contains team.md)")
     parser.add_argument("--team", type=str, default=None, help="Team name (substring match against teams.json)")
     parser.add_argument("--suffix", type=str, default="", help="Extra suffix for filename (e.g., '2' for -test-2)")
-    parser.add_argument("--swimlane", type=str, default="ask",
-                        help="Swimlane filter: 'all' for everything, 'ask' for interactive, or Epic key")
+    parser.add_argument(
+        "--swimlane",
+        type=str,
+        default="ask",
+        help="Swimlane filter: 'all' for everything, 'ask' for interactive, or Epic key",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Debug logging")
     args = parser.parse_args()
 
@@ -458,16 +482,19 @@ def main() -> None:
 
     if args.setup:
         from setup import run_setup
+
         run_setup()
         return
 
     if args.add_team:
         from setup import add_team
+
         add_team()
         return
 
     if args.check:
         from setup import run_check
+
         run_check()
         return
 
@@ -483,15 +510,19 @@ def main() -> None:
         selected = _select_team(teams, args.team)
         for i, (team_name, sources) in enumerate(selected):
             if len(selected) > 1:
-                print(f"\n{'='*50}")
-                print(f"  [{i+1}/{len(selected)}] Generating report for: {team_name}")
-                print(f"{'='*50}")
+                print(f"\n{'=' * 50}")
+                print(f"  [{i + 1}/{len(selected)}] Generating report for: {team_name}")
+                print(f"{'=' * 50}")
             log.info("Selected team: %s", team_name)
-            run(workspace=args.workspace, test_mode=args.test, suffix=args.suffix,
-                sources=sources, swimlane=args.swimlane)
+            run(
+                workspace=args.workspace,
+                test_mode=args.test,
+                suffix=args.suffix,
+                sources=sources,
+                swimlane=args.swimlane,
+            )
     else:
-        run(workspace=args.workspace, test_mode=args.test, suffix=args.suffix,
-            sources=None, swimlane=args.swimlane)
+        run(workspace=args.workspace, test_mode=args.test, suffix=args.suffix, sources=None, swimlane=args.swimlane)
 
 
 if __name__ == "__main__":
