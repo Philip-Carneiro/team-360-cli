@@ -358,28 +358,56 @@ def run(team_arg: str | None = None, verbose: bool = False) -> None:
     prs = _dedupe_prs(all_prs)
     print(f"Total unique open PRs: {len(prs)}")
 
-    # Enrich PRs missing age (JIRA-sourced) via gh pr view
-    missing_age = [pr for pr in prs if pr.get("age_days", 0) == 0 and pr.get("platform") == "github" and pr.get("url")]
-    if missing_age:
+    # Enrich JIRA-sourced PRs: verify they're open and fetch age
+    jira_sourced = [pr for pr in prs if pr.get("age_days", 0) == 0 and pr.get("url")]
+    if jira_sourced:
         import subprocess
 
-        print(f"  Fetching creation dates for {len(missing_age)} PRs...", flush=True)
-        for pr in missing_age:
+        print(f"  Verifying state for {len(jira_sourced)} JIRA-sourced PRs...", flush=True)
+        closed_urls: set[str] = set()
+        for pr in jira_sourced:
             try:
-                proc = subprocess.run(
-                    ["gh", "pr", "view", pr["url"], "--json", "createdAt"],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-                if proc.returncode == 0:
-                    data = json.loads(proc.stdout)
-                    created = data.get("createdAt", "")
-                    if created:
-                        dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                        pr["age_days"] = max((datetime.now(timezone.utc) - dt).days, 0)
+                url = pr["url"]
+                if pr.get("platform") == "github":
+                    proc = subprocess.run(
+                        ["gh", "pr", "view", url, "--json", "createdAt,state"],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    if proc.returncode == 0:
+                        data = json.loads(proc.stdout)
+                        if data.get("state", "").upper() != "OPEN":
+                            closed_urls.add(url)
+                            continue
+                        created = data.get("createdAt", "")
+                        if created:
+                            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                            pr["age_days"] = max((datetime.now(timezone.utc) - dt).days, 0)
+                elif pr.get("platform") == "gitlab":
+                    # ponytail: glab mr view by URL; falls back to keeping the PR if glab fails
+                    proc = subprocess.run(
+                        ["glab", "mr", "view", url, "--output", "json"],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    if proc.returncode == 0:
+                        data = json.loads(proc.stdout)
+                        state = data.get("state", "").lower()
+                        if state not in ("opened",):
+                            closed_urls.add(url)
+                            continue
+                        created = data.get("created_at", "")
+                        if created:
+                            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                            pr["age_days"] = max((datetime.now(timezone.utc) - dt).days, 0)
             except Exception:
                 pass
+
+        if closed_urls:
+            prs = [pr for pr in prs if pr.get("url") not in closed_urls]
+            print(f"  Filtered out {len(closed_urls)} closed/merged PRs")
 
     # Generate report
     print("Generating report...", flush=True)
