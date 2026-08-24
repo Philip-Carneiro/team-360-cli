@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.egg-info/
+dist/
+build/
+.env
+.env.*
+*.pem
+*.key
+*-token.json
+.team-360-sources.json
+teams.json
+reports/
