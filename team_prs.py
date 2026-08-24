@@ -300,6 +300,30 @@ def _generate_report(team_name: str, roster: list[dict], prs: list[dict]) -> str
         lines.append(f"| {_pr_link(pr)} | {pr['repo']} | {matched} | {pr['title'][:50]} | {pr['age_days']}d |")
     lines.append("")
 
+    # Slack MSG — JSON array for workflow consumption (roster members only)
+    slack_items = []
+    for pr in sorted(prs, key=lambda p: -p.get("age_days", 0)):
+        matched = _match_to_roster(pr["author"], roster)
+        if not matched:
+            continue
+        num = pr.get("number", "?")
+        platform = pr.get("platform", "github")
+        prefix = "#" if platform == "github" else "!"
+        slack_items.append(
+            {
+                "text": f"{prefix}{num} - {pr['title'][:60]}{'...' if len(pr['title']) > 60 else ''}",
+                "url": pr.get("url", ""),
+                "age": f"{pr.get('age_days', 0)}d",
+                "author": matched,
+            }
+        )
+    lines.append("## Slack MSG")
+    lines.append("")
+    lines.append("```json")
+    lines.append(json.dumps(slack_items))
+    lines.append("```")
+    lines.append("")
+
     return "\n".join(lines)
 
 
