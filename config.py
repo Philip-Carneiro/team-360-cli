@@ -8,6 +8,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import unquote
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class TeamMember:
     name: str
     role: str
     location: str
+    email: str = ""
 
 
 @dataclass
@@ -174,6 +176,18 @@ def _field(text: str, name: str) -> str | None:
     return None
 
 
+def _extract_calendar_id(raw: str) -> str:
+    """Extract Google Calendar ID from a markdown link, Google Calendar URL, or plain text."""
+    m = re.search(r"\[([^\]]*)\]\(([^)]+)\)", raw)
+    url = m.group(2) if m else raw
+    src = re.search(r"[?&]src=([^&\s)]+)", url)
+    if src:
+        return unquote(src.group(1))
+    if "@" in url and not url.startswith("["):
+        return url.strip()
+    return ""
+
+
 def _parse_team_md(text: str, config: TeamConfig) -> None:
     config.team_name = _field(text, "Team") or ""
     config.manager = _field(text, "Manager") or ""
@@ -204,7 +218,9 @@ def _parse_team_md(text: str, config: TeamConfig) -> None:
     # Roster table
     for row in _parse_table_rows(text, r"Name", col_count=4):
         if len(row) >= 3:
-            config.roster.append(TeamMember(name=row[0], role=row[1], location=row[2]))
+            raw_email = row[3].strip() if len(row) >= 4 else ""
+            em = re.search(r"[\w.+-]+@[\w.-]+\.\w+", raw_email)
+            config.roster.append(TeamMember(name=row[0], role=row[1], location=row[2], email=em.group(0) if em else ""))
 
     # Cadence table
     for row in _parse_table_rows(text, r"Ceremony", col_count=3):
@@ -218,11 +234,11 @@ def _parse_team_md(text: str, config: TeamConfig) -> None:
             if m2:
                 config.activity_targets[row[0]] = int(m2.group(1))
 
-    # PTO Calendars
+    # PTO Calendars — extract actual calendar ID from markdown links or URLs
     for row in _parse_table_rows(text, r"Calendar.*ID", col_count=2):
         if len(row) >= 2:
-            cal_id = row[1].strip()
-            if "@" in cal_id:
+            cal_id = _extract_calendar_id(row[1].strip())
+            if cal_id and "@" in cal_id and cal_id not in config.pto_calendar_ids:
                 config.pto_calendar_ids.append(cal_id)
 
 
