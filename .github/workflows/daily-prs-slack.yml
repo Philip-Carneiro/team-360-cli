@@ -1,0 +1,74 @@
+name: Daily PRs Report → Slack
+
+on:
+  schedule:
+    - cron: '0 6 * * 1-5'  # 06:00 UTC, Mon-Fri
+  workflow_dispatch:        # trigger manual via UI
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create teams.json from secret
+        env:
+          TEAMS_JSON: ${{ secrets.TEAMS_JSON }}
+        run: echo "$TEAMS_JSON" > teams.json
+
+      - name: Generate PR report
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 team_prs.py --team green
+
+      - name: Post to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          # Find latest generated report
+          REPORT=$(find Team-PRs-Report -name "*.md" -type f | sort | tail -1)
+          if [ -z "$REPORT" ]; then
+            echo "No report found"
+            exit 1
+          fi
+
+          # Extract "PR Age Summary" section (from header to next ## or EOF)
+          SECTION=$(awk '/^## PR Age Summary/{found=1; next} found && /^## /{exit} found' "$REPORT")
+
+          if [ -z "$SECTION" ]; then
+            echo "PR Age Summary section not found in report"
+            exit 1
+          fi
+
+          # Build Slack message
+          DATE=$(date -u +"%d/%m/%Y")
+          HEADER=":bar_chart: *PRs Status Today — ${DATE}*"
+
+          # Convert markdown table to plain text for Slack readability
+          # Strip leading/trailing pipes, collapse separators
+          CLEAN=$(echo "$SECTION" | grep '|' | grep -v '^\| ---' | sed 's/^ *| *//; s/ *| *$//; s/ *| */  |  /g')
+
+          # Escape special chars for JSON
+          BODY=$(echo "$CLEAN" | python3 -c "
+          import sys, json
+          lines = sys.stdin.read().strip()
+          print(json.dumps(lines))
+          ")
+
+          # Post via webhook
+          curl -sf -X POST \
+            -H 'Content-Type: application/json' \
+            -d "{\"blocks\":[{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"${HEADER}\"}},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"\`\`\`\n\"${BODY}\"\n\`\`\`\"}}]}" \
+            "$SLACK_WEBHOOK_URL" \
+            && echo "Posted to Slack" \
+            || echo "Slack post failed"
