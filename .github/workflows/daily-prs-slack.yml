@@ -35,40 +35,44 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          # Find latest generated report
-          REPORT=$(find Team-PRs-Report -name "*.md" -type f | sort | tail -1)
-          if [ -z "$REPORT" ]; then
-            echo "No report found"
-            exit 1
-          fi
+          python3 - <<'PYEOF'
+          import glob, json, os, re, sys, urllib.request
+          from datetime import datetime, timezone
 
-          # Extract "PR Age Summary" section (from header to next ## or EOF)
-          SECTION=$(awk '/^## PR Age Summary/{found=1; next} found && /^## /{exit} found' "$REPORT")
+          files = sorted(glob.glob("Team-PRs-Report/**/*.md", recursive=True))
+          if not files:
+              print("No report found")
+              sys.exit(1)
+          report = open(files[-1]).read()
 
-          if [ -z "$SECTION" ]; then
-            echo "PR Age Summary section not found in report"
-            exit 1
-          fi
+          match = re.search(r"```json\n(\[.*?\])\n```", report, re.DOTALL)
+          if not match:
+              print("Slack MSG JSON not found in report")
+              sys.exit(1)
+          items = json.loads(match.group(1))
 
-          # Build Slack message
-          DATE=$(date -u +"%d/%m/%Y")
-          HEADER=":bar_chart: *PRs Status Today — ${DATE}*"
+          if not items:
+              print("No PRs to post")
+              sys.exit(0)
 
-          # Convert markdown table to plain text for Slack readability
-          # Strip leading/trailing pipes, collapse separators
-          CLEAN=$(echo "$SECTION" | grep '|' | grep -v '^\| ---' | sed 's/^ *| *//; s/ *| *$//; s/ *| */  |  /g')
+          # Plain URLs — Slack auto-links them even in Workflow Builder
+          lines = []
+          for item in items:
+              pr_num = item['text'].split(' - ')[0]
+              lines.append(f"• {item['text']}  [{item['age']}] — {item['author']}")
+              lines.append(f"  ↳ {item['url']}")
+          body = "\n".join(lines)
 
-          # Escape special chars for JSON
-          BODY=$(echo "$CLEAN" | python3 -c "
-          import sys, json
-          lines = sys.stdin.read().strip()
-          print(json.dumps(lines))
-          ")
+          date = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+          text = f":bar_chart: *PRs Status Today — {date}* ({len(items)} open)\n\n{body}"
 
-          # Post via webhook
-          curl -sf -X POST \
-            -H 'Content-Type: application/json' \
-            -d "{\"blocks\":[{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"${HEADER}\"}},{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"\`\`\`\n\"${BODY}\"\n\`\`\`\"}}]}" \
-            "$SLACK_WEBHOOK_URL" \
-            && echo "Posted to Slack" \
-            || echo "Slack post failed"
+          payload = json.dumps({"text": text}).encode()
+          url = os.environ["SLACK_WEBHOOK_URL"]
+          req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+          try:
+              urllib.request.urlopen(req)
+              print("Posted to Slack")
+          except Exception as e:
+              print(f"Slack post failed: {e}")
+              sys.exit(1)
+          PYEOF

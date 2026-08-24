@@ -255,9 +255,12 @@ def _parse_jira_md(text: str, config: TeamConfig) -> None:
     if len(blocks) > 1:
         config.jql_templates = blocks[1].strip()
 
-    # Repo mapping
-    for m in re.finditer(r"\*\*(\w+)\*\*\s*\|\s*\[([^\]]+)\]\(([^)]+)\)", text):
-        config.repo_mapping[m.group(1)] = m.group(3)
+    # Repo mapping — table format: | Stream | [repo](url) | Purpose |
+    for row in _parse_table_rows(text, r"Stream", col_count=3):
+        if len(row) >= 2:
+            link = re.search(r"\[([^\]]+)\]\(([^)]+)\)", row[1])
+            if link:
+                config.repo_mapping[row[0].strip()] = link.group(2)
 
 
 def _parse_confluence_md(text: str, config: TeamConfig) -> None:
