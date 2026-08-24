@@ -25,7 +25,9 @@ def fetch_previous_360(confluence_auth: tuple, confluence_url: str, root_dir_id:
         ]
         if pages:
             page = pages[0]
-            page_url = f"{confluence_url.rstrip('/')}/pages/{page['id']}"
+            webui = page.get("_links", {}).get("webui", "")
+            base = confluence_url.rstrip("/")
+            page_url = f"{base}{webui}" if webui else f"{base}/pages/{page['id']}"
             return page, page_url
     except Exception as e:
         log.warning("Failed to fetch previous 360: %s", e)
@@ -82,7 +84,9 @@ def publish_360(
     r.raise_for_status()
     result = r.json()
     page_id = int(result["id"])
-    page_url = f"{confluence_url.rstrip('/')}/pages/{page_id}"
+    webui = result.get("_links", {}).get("webui", "")
+    base = result.get("_links", {}).get("base", confluence_url.rstrip("/"))
+    page_url = f"{base}{webui}" if webui else f"{confluence_url.rstrip('/')}/pages/{page_id}"
     log.info("Published page %s: %s", page_id, page_url)
     return page_id, page_url
 
