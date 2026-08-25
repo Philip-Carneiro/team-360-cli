@@ -23,7 +23,7 @@ cd team-360-cli
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install ruff pre-commit
+pip install -r requirements-dev.txt
 pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
@@ -53,6 +53,7 @@ The `-s` flag adds `Signed-off-by: Your Name <your@email.com>` to the commit mes
 On commit, the pre-commit hooks will automatically:
 - Run `ruff check --fix` on modified files (auto-fixes what it can)
 - Run `ruff format` on modified files
+- Run the unit tests (`pytest`) and block the commit if any fail
 - Verify the commit is signed
 - Block the commit if on `main` branch
 
@@ -133,13 +134,28 @@ ruff format .
 ruff format --check .
 ```
 
+## Testing
+
+Run the test suite locally before committing:
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest -q
+```
+
+All tests live in `tests/` and are fully offline — they use only dummy/synthetic data. No real tickets, PRs, repos, emails, tokens, or people. If you add a new test, follow this rule: mock the network layer (`requests`, `urllib`) and use fabricated inputs.
+
+Assertions must not be tautological — they should be able to fail if a real bug is introduced. If your test filters data by condition X and then asserts X is present, that's tautological (it always passes). Assert derived properties or outcomes that depend on X being correct.
+
+Tests run automatically on every `git commit` via the pre-commit hook and will block the commit if any fail. They also run in CI on every PR (`.github/workflows/tests.yml`).
+
 ## Conventions
 
 - **Python 3.10+** — use type hints, f-strings, `Path` over `os.path`
 - **No unnecessary dependencies** — if the stdlib or `requests` can do it, don't add a package
 - **Credentials from env vars only** — never hardcode tokens, URLs, or secrets
 - **No comments unless the "why" is non-obvious** — let clear naming do the work
-- **Test with `--test` mode** before submitting — verify the report generates without errors
+- **Test with `--test` mode** before submitting — verify the report generates without errors and make sure `pytest` passes
 - **All code must pass `ruff check` and `ruff format`** with zero warnings and errors
 
 ## Adding a New Collector
