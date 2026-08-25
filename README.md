@@ -542,6 +542,26 @@ When any step in a workflow fails, the final step posts a failure alert to the `
 This ensures you are immediately notified of workflow failures and can take action (e.g., renew an expired token, fix a credential) without waiting for the next scheduled run.
 
 
+## Development / Testing
+
+If you're contributing to this project, install the development dependencies and set up the pre-commit hooks. This is a one-time setup per clone.
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install
+```
+
+After that, every commit automatically runs ruff (formatter and linter) and the unit test suite. If any test fails, the commit is blocked. This keeps the codebase clean and prevents broken code from being committed.
+
+To bypass the gate in an emergency (not recommended):
+
+```bash
+git commit --no-verify
+```
+
+The test gate requires the dev dependencies to be installed. If you see a "pytest not found" error, run `pip install -r requirements-dev.txt`.
+
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
