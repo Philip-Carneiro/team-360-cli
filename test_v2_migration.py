@@ -68,36 +68,43 @@ print("spaceId resolved via params={'keys': ...}; parentId, status, body.represe
 print("v2 base tolerates url with and without /wiki")
 print("empty space_key raises ValueError")
 
-# --- FIX 2 regression: fetch_previous_360 uses v2 folders endpoint ---
+# --- fetch_previous_360 uses v1 CQL search and skips "test" pages ---
 calls.clear()
 
 
-def mock_get_v2_children(url, **kwargs):
+def mock_get_search(url, **kwargs):
     calls.append(("GET", url, kwargs))
-    if "/folders/" in url and "/children" in url:
+    if "/rest/api/content/search" in url:
+        # Newest first: the test page must be skipped, the 19/08 page returned.
         return MockResponse(
             {
                 "results": [
-                    {"id": "888", "title": "Team 360 - 01/01/2026"},
-                    {"id": "777", "title": "Team 360-test - 02/01/2026"},  # excluded by -test filter
+                    {"id": "777", "title": "test-Green 360 - 25/08/2026"},
+                    {"id": "888", "title": "Green 360 - 19/08/2026", "_links": {"webui": "/spaces/X/pages/888"}},
                 ]
             }
         )
     return MockResponse({})
 
 
-conf.requests.get = mock_get_v2_children
+conf.requests.get = mock_get_search
 
 prev_data, prev_url = conf.fetch_previous_360(("u", "p"), "https://foo.atlassian.net/wiki", 42)
 
 assert len(calls) == 1, f"Expected 1 call, got {len(calls)}"
 assert calls[0][0] == "GET", f"Expected GET, got {calls[0][0]}"
-assert "/api/v2/folders/42/children" in calls[0][1], f"Wrong endpoint: {calls[0][1]}"
-assert "/rest/api/content/" not in calls[0][1], "v1 endpoint leaked in fetch_previous_360"
+assert calls[0][1].endswith("/rest/api/content/search"), f"Wrong endpoint: {calls[0][1]}"
+assert "/api/v2/folders" not in calls[0][1] and "/folders/" not in calls[0][1], "v2 folders endpoint leaked"
+cql = calls[0][2]["params"]["cql"]
+assert "parent=42" in cql, f"CQL missing parent: {cql}"
+assert "type=page" in cql, f"CQL missing type=page: {cql}"
+assert "ORDER BY created DESC" in cql, f"CQL missing ordering: {cql}"
 assert prev_data is not None, "prev_data should not be None"
-assert prev_data["id"] == "888", f"Wrong page selected: {prev_data}"
-assert prev_data["title"] == "Team 360 - 01/01/2026", f"Wrong title: {prev_data}"
+# Anti-tautological: the test page (777) is newest; correct filter returns the 19/08 page (888).
+assert prev_data["id"] == "888", f"Wrong page selected (test page not skipped?): {prev_data}"
+assert prev_data["title"] == "Green 360 - 19/08/2026", f"Wrong title: {prev_data}"
 assert "888" in prev_url, f"page_url wrong: {prev_url}"
 
-print("fetch_previous_360 uses v2 /api/v2/folders/{id}/children (not v1 /rest/api/content)")
+print("fetch_previous_360 uses v1 /rest/api/content/search with CQL parent/type/ORDER BY")
+print("fetch_previous_360 skips 'test' pages and returns the correct previous 360")
 print("self-check OK")

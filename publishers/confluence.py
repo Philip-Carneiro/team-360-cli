@@ -31,29 +31,29 @@ def _resolve_space_id(confluence_auth: tuple, v2_base: str, space_key: str) -> s
 
 
 def fetch_previous_360(confluence_auth: tuple, confluence_url: str, root_dir_id: int) -> tuple[dict | None, str | None]:
-    """Find most recent 360 page under root dir (API v2). Returns (page_data, page_url)."""
-    v2_base = _v2_base(confluence_url)
+    """Find most recent 360 page directly under root dir. Returns (page_data, page_url).
+
+    Folder children via v2 (/folders/{id}/children) 404s. The v1 CQL search endpoint
+    `parent={id} AND type=page` returns the direct child pages, newest first.
+    """
+    base = confluence_url.rstrip("/")
     try:
         r = requests.get(
-            f"{v2_base}/folders/{root_dir_id}/children",
+            f"{base}/rest/api/content/search",
             auth=confluence_auth,
-            params={"limit": 25},
+            params={"cql": f"parent={root_dir_id} AND type=page ORDER BY created DESC", "limit": 25},
             timeout=30,
         )
         r.raise_for_status()
-        pages = [
-            p
-            for p in r.json().get("results", [])
-            if "360" in p.get("title", "") and "-test" not in p.get("title", "").lower()
-        ]
-        if pages:
-            page = pages[0]
+        for page in r.json().get("results", []):
+            title = page.get("title", "")
+            if "test" in title.lower() or "360" not in title:
+                continue
             page_id = page["id"]
             webui = page.get("_links", {}).get("webui", "")
-            base = confluence_url.rstrip("/")
             page_url = f"{base}{webui}" if webui else f"{base}/pages/{page_id}"
             # Preserve contract: main.py reads prev_data["title"] and prev_data["id"]
-            return {"id": page_id, "title": page.get("title", "")}, page_url
+            return {"id": page_id, "title": title}, page_url
     except Exception as e:
         log.warning("Failed to fetch previous 360: %s", e)
     return None, None
