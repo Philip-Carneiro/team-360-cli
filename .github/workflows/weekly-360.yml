@@ -21,6 +21,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Preflight — validate secrets
+        env:
+          PREFLIGHT_CHECKS: teams,jira,google
+          TEAMS_JSON: ${{ secrets.TEAMS_JSON }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: python3 scripts/preflight.py
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
@@ -98,7 +110,7 @@ jobs:
               print("No Confluence URL to post")
               exit(0)
 
-          text = f":memo: *360 Report published*\n{url}"
+          text = f"{url}"
           payload = json.dumps({"text": text}).encode()
           webhook = os.environ["SLACK_WEBHOOK_URL"]
           req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"})
@@ -108,3 +120,9 @@ jobs:
           except Exception as e:
               print(f"Slack post failed: {e}")
           PYEOF
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL_ALERTS: ${{ secrets.SLACK_WEBHOOK_URL_ALERTS }}
+        run: python3 scripts/notify_failure.py

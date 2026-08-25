@@ -451,7 +451,12 @@ def run(
             _, page_url = publish_360(conf_auth, conf_url_base, root_id, title, html, space_key)
             print(f"Confluence: {page_url}")
         except Exception as e:
-            log.error("Confluence publish failed: %s", e)
+            msg = str(e)
+            if hasattr(e, "response") and hasattr(e.response, "text"):
+                msg = f"{e} | Response: {e.response.text[:500]}"
+            log.error("Confluence publish failed: %s", msg)
+            # ponytail: publish was attempted and failed — exit non-zero so the CI if:failure() trap fires
+            sys.exit(1)
 
     if test_mode:
         print(f"\n*** TEST MODE — no archive, suffix {file_suffix} ***")
