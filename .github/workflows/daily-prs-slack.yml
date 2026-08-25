@@ -15,6 +15,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Preflight — validate secrets
+        env:
+          PREFLIGHT_CHECKS: teams,jira
+          TEAMS_JSON: ${{ secrets.TEAMS_JSON }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: python3 scripts/preflight.py
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
