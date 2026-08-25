@@ -100,7 +100,6 @@ def _ticket_link(key: str) -> str:
 def _find_stale(board: list, roster: list[dict]) -> list[dict]:
     out = []
     for t in board:
-        # ponytail: learning tickets excluded — they stay open for the release cycle
         if _is_epic(t) or _is_testing(t) or _is_strat(t) or _is_learning(t):
             continue
         if _classify(t, roster) == "THIRD-PARTY":
@@ -255,13 +254,13 @@ def _analyze_prs(board: list, gh_prs: dict, roster: list[dict]) -> list[dict]:
 
     for repo, prs in gh_prs.items():
         for pr in prs:
-            health = pr.get("pr_health", "")
+            health = (pr.get("pr_health") or {}).get("category")
             if health in ("BUILD_FAILING", "CHANGES_REQUESTED_NOT_ADDRESSED", "AWAITING_INITIAL_REVIEW"):
                 alerts.append(
                     {
                         "key": f"#{pr.get('number', '')}",
                         "type": health,
-                        "detail": pr.get("pr_health_detail", ""),
+                        "detail": (pr.get("pr_health") or {}).get("detail", ""),
                         "repo": repo,
                         "url": pr.get("url", ""),
                         "days_since_owner_update": pr.get("days_since_owner_update", 0),
@@ -529,6 +528,22 @@ def apply_heuristics(
 ) -> dict:
     """Apply all heuristic rules and return analyzed data."""
     roster = config.get("roster", [])
+
+    # Wire real PR health into ticket pr_links (FIX 3)
+    pr_health_map: dict[str, dict] = {}
+    for prs in github_prs.values():
+        for pr in prs:
+            url = pr.get("url")
+            if url and pr.get("pr_health"):
+                pr_health_map[url] = pr["pr_health"]
+
+    for ticket in doing_board:
+        for pr_link in ticket.get("pr_links", []):
+            url = pr_link.get("url")
+            if url in pr_health_map:
+                health_dict = pr_health_map[url]
+                pr_link["pr_health"] = health_dict.get("category", "")
+                pr_link["pr_health_detail"] = health_dict.get("detail", "")
 
     stale = _find_stale(doing_board, roster)
     overloaded = _find_overloaded(doing_board, roster)

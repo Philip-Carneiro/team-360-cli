@@ -190,8 +190,6 @@ def run(
     from collectors.github import collect_github_prs
     from collectors.gitlab import collect_gitlab_mrs
     from collectors.jira import (
-        collect_active_sprint,
-        collect_activity_type,
         collect_backlog,
         collect_board_swimlanes,
         collect_bugs,
@@ -339,7 +337,6 @@ def run(
             "bugs": collect_bugs(cfg, auth),
             "strats": collect_strats(cfg, auth),
             "completed": collect_completed(cfg, auth, prev_360_date),
-            "activity_type": collect_activity_type(cfg, auth),
             "testing_transitions": collect_testing_transitions(cfg, auth, prev_360_date),
             "epic_progress": collect_epic_progress(cfg, auth, epics),
         }
@@ -376,14 +373,9 @@ def run(
         except Exception as e:
             log.warning("Absence collection failed: %s", e)
 
-    # 4.7. Collect learning tickets + active sprint
+    # 4.7. Collect learning tickets
     learning_tickets: list[dict] = []
-    active_sprint: dict | None = None
     try:
-        active_sprint = collect_active_sprint(cfg, auth)
-        if active_sprint:
-            log.info("Active sprint: %s", active_sprint.get("name", ""))
-            cfg["active_sprint"] = active_sprint
         learning_tickets = collect_learning_tickets(cfg, auth)
         log.info("Learning tickets found: %d", len(learning_tickets))
     except Exception as e:
@@ -463,7 +455,6 @@ def run(
             if hasattr(e, "response") and hasattr(e.response, "text"):
                 msg = f"{e} | Response: {e.response.text[:500]}"
             log.error("Confluence publish failed: %s", msg)
-            # ponytail: publish was attempted and failed — exit non-zero so the CI if:failure() trap fires
             sys.exit(1)
 
     if test_mode:

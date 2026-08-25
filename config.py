@@ -47,8 +47,6 @@ class TeamConfig:
 
     # context/jira.md
     jira_projects: list[str] = field(default_factory=list)
-    jql_active_work: str = ""
-    jql_templates: str = ""
     repo_mapping: dict[str, str] = field(default_factory=dict)
 
     # context/confluence.md
@@ -142,7 +140,6 @@ def _extract_board_id(url: str) -> str:
     m = re.search(r"filter[=/](\d+)", url)
     if m:
         return m.group(1)
-    # ponytail: handle Confluence-stripped plain text like "board 12014" or "filter 110151"
     m = re.search(r"(?:board|filter)\s+(\d+)", url, re.IGNORECASE)
     if m:
         return m.group(1)
@@ -202,7 +199,6 @@ def _parse_team_md(text: str, config: TeamConfig) -> None:
 
     comp = _field(text, "Jira Components")
     if comp:
-        # ponytail: strip parenthetical notes like "(required on every ticket)"
         config.jira_components = [re.sub(r"\s*\(.*\)$", "", c.strip()) for c in comp.split(",")]
 
     # Boards table
@@ -251,13 +247,6 @@ def _parse_jira_md(text: str, config: TeamConfig) -> None:
     for row in _parse_table_rows(text, r"Source", col_count=2):
         if len(row) >= 2:
             config.jira_projects.append(row[1])
-
-    # JQL patterns — grab fenced code blocks
-    blocks = re.findall(r"```\n(.+?)```", text, re.DOTALL)
-    if blocks:
-        config.jql_active_work = blocks[0].strip()
-    if len(blocks) > 1:
-        config.jql_templates = blocks[1].strip()
 
     # Repo mapping — table format: | Stream | [repo](url) | Purpose |
     for row in _parse_table_rows(text, r"Stream", col_count=3):

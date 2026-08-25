@@ -67,4 +67,37 @@ print("v2 endpoints correct (/api/v2/spaces, /api/v2/pages), no /rest/api/")
 print("spaceId resolved via params={'keys': ...}; parentId, status, body.representation=storage present")
 print("v2 base tolerates url with and without /wiki")
 print("empty space_key raises ValueError")
+
+# --- FIX 2 regression: fetch_previous_360 uses v2 folders endpoint ---
+calls.clear()
+
+
+def mock_get_v2_children(url, **kwargs):
+    calls.append(("GET", url, kwargs))
+    if "/folders/" in url and "/children" in url:
+        return MockResponse(
+            {
+                "results": [
+                    {"id": "888", "title": "Team 360 - 01/01/2026"},
+                    {"id": "777", "title": "Team 360-test - 02/01/2026"},  # excluded by -test filter
+                ]
+            }
+        )
+    return MockResponse({})
+
+
+conf.requests.get = mock_get_v2_children
+
+prev_data, prev_url = conf.fetch_previous_360(("u", "p"), "https://foo.atlassian.net/wiki", 42)
+
+assert len(calls) == 1, f"Expected 1 call, got {len(calls)}"
+assert calls[0][0] == "GET", f"Expected GET, got {calls[0][0]}"
+assert "/api/v2/folders/42/children" in calls[0][1], f"Wrong endpoint: {calls[0][1]}"
+assert "/rest/api/content/" not in calls[0][1], "v1 endpoint leaked in fetch_previous_360"
+assert prev_data is not None, "prev_data should not be None"
+assert prev_data["id"] == "888", f"Wrong page selected: {prev_data}"
+assert prev_data["title"] == "Team 360 - 01/01/2026", f"Wrong title: {prev_data}"
+assert "888" in prev_url, f"page_url wrong: {prev_url}"
+
+print("fetch_previous_360 uses v2 /api/v2/folders/{id}/children (not v1 /rest/api/content)")
 print("self-check OK")

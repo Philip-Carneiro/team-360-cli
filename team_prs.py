@@ -420,7 +420,6 @@ def run(team_arg: str | None = None, verbose: bool = False) -> None:
                             pr["age_days"] = max((datetime.now(timezone.utc) - dt).days, 0)
                         pr["review_decision"] = data.get("reviewDecision", "")
                 elif pr.get("platform") == "gitlab":
-                    # ponytail: glab mr view by URL; falls back to keeping the PR if glab fails
                     proc = subprocess.run(
                         ["glab", "mr", "view", url, "--output", "json"],
                         capture_output=True,

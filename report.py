@@ -3,20 +3,15 @@
 from __future__ import annotations
 
 import logging
-import os
 import random
 import re
 from datetime import datetime, timezone
 
+from heuristics import _jira_base, _stale_level
+
 _TITLE_EMOJIS = ["🟢", "🚀", "🔥", "⚡", "🎯", "🏁", "📊", "🌟", "💎", "🛡️", "🎲", "🧭", "🔮", "🎪", "🏆"]
 
 log = logging.getLogger(__name__)
-
-_STALE_THRESHOLDS = [(14, "DANGER"), (7, "WARNING"), (3, "ATTENTION")]
-
-
-def _jira_base() -> str:
-    return (os.environ.get("JIRA_BASE_URL") or os.environ.get("JIRA_URL") or "").rstrip("/")
 
 
 def _get_name(ticket: dict, field: str, default: str = "") -> str:
@@ -31,11 +26,15 @@ def _jl(key: str) -> str:
     return f"[{key}]({base}/browse/{key})" if base else key
 
 
-def _stale_level(days: int) -> str | None:
-    for threshold, label in _STALE_THRESHOLDS:
-        if days >= threshold:
-            return label
-    return None
+def _linkify_ticket_keys(md: str) -> str:
+    base = _jira_base()
+    if not base:
+        return md
+    return re.sub(
+        r"(?<![\[/\w-])([A-Z][A-Z0-9]+-\d+)(?!\]|\))",
+        rf"[\1]({base}/browse/\1)",
+        md,
+    )
 
 
 def _md_table(headers: list[str], rows: list[list[str]]) -> str:
@@ -249,7 +248,7 @@ def _parse_prev_strats(text: str) -> dict[str, str]:
     return result
 
 
-def _clean_status_summary(text: str, max_len: int = 60) -> str:
+def _clean_status_summary(text: str) -> str:
     if not text:
         return "—"
     text = re.sub(r"^(RHAI\s+\w+\s+Team\s*[-–—]?\s*)", "", text)
@@ -261,7 +260,6 @@ def _clean_status_summary(text: str, max_len: int = 60) -> str:
     )
     text = re.sub(r"Target\s+\d+\.\d+\s*(Stable|EA|GA|TP|DP)?\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^\s*[-–—]\s*", "", text).strip()
-    # ponytail: fix concatenated words and missing spaces from raw JIRA
     text = re.sub(r"([a-z])\.([A-Z])", r"\1. \2", text)
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
     text = re.sub(r"(teams)(we|they|it|he|she)", r"\1 \2", text)
@@ -269,9 +267,7 @@ def _clean_status_summary(text: str, max_len: int = 60) -> str:
     text = re.sub(r"\s{2,}", " ", text).strip()
     if not text:
         return "—"
-    if len(text) > max_len:
-        cut = text[:max_len].rsplit(" ", 1)[0]
-        text = cut + "..."
+
     return text
 
 
@@ -334,7 +330,6 @@ def _header(
     if config.get("swimlane_filter"):
         label = "Swimlanes" if "," in config["swimlane_filter"] else "Swimlane"
         fields.append(f"**{label}**: {config['swimlane_filter']}")
-    # ponytail: join fields into one block — no blank lines between them.
     # Use pipe-table style to keep each field on its own rendered line.
     lines += ["\n".join(fields), "", "---", ""]
     return "\n".join(lines)
@@ -360,7 +355,6 @@ def _s_agenda(a: dict) -> str:
     board_map = {t["key"]: t for t in a.get("doing_board", [])}
     lines = ["## 2. Agenda", "", "Items requiring team discussion, ordered by priority:", ""]
 
-    # ponytail: strategic briefing, not a ticket dump. Positive first, top dangers, concerns. Cap at 6.
     positives = []
     epics = a.get("epic_progress", [])
     completed = a.get("completed", [])
@@ -371,7 +365,7 @@ def _s_agenda(a: dict) -> str:
         parts = []
         if near_complete:
             pcts = ", ".join(
-                f"{e.get('summary', '')[:35]} {round(e['done_count'] / e['total_children'] * 100)}%"
+                f"{e.get('summary', '')} {round(e['done_count'] / e['total_children'] * 100)}%"
                 for e in near_complete[:3]
             )
             parts.append(f"{len(near_complete)} Epics nearing completion ({pcts})")
@@ -391,7 +385,6 @@ def _s_agenda(a: dict) -> str:
             if ticket:
                 ticket_items.append(_enrich_agenda_text(key, ticket))
                 continue
-        # ponytail: skip overloaded-engineer items — already added as concerns below
         if any(name in text for name in overloaded_names):
             continue
         ticket_items.append(text)
@@ -417,8 +410,6 @@ def _s_agenda(a: dict) -> str:
 
 def _enrich_agenda_text(key: str, ticket: dict) -> str:
     summary = ticket.get("summary", "")
-    if len(summary) > 70:
-        summary = summary[:67] + "..."
     status = _get_name(ticket, "status")
     days = ticket.get("days_worked", 0)
     assignee = _get_name(ticket, "assignee", "Unassigned")
@@ -444,7 +435,6 @@ def _enrich_agenda_text(key: str, ticket: dict) -> str:
     elif status.lower() in ("review", "in review"):
         parts.append("No PR links on ticket.")
 
-    # ponytail: one action phrase per item based on state
     if not pr_links and status.lower() in ("review", "in review"):
         parts.append("Action: determine status.")
     elif any(p.get("pr_health") == "CHANGES_REQUESTED_NOT_ADDRESSED" for p in pr_links):
@@ -593,7 +583,6 @@ def _s_activity(a: dict, config: dict, prev_activity: dict[str, int] | None = No
     lines.append(_md_table(headers, rows))
     lines.append("")
 
-    # ponytail: non-tautological observations — add interpretation, not table echoes
     observations = _build_activity_observations(split, targets, prev_activity)
     if observations:
         lines += ["**Observations:**"]
@@ -647,9 +636,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
         for s in stale:
             days = s["days_worked"]
             recurring = "Yes" if days >= 21 else "New"
-            rows.append(
-                [_jl(s["key"]), s["summary"][:50], s["assignee"], s["status"], str(days), s["level"], recurring]
-            )
+            rows.append([_jl(s["key"]), s["summary"], s["assignee"], s["status"], str(days), s["level"], recurring])
         lines.append(_md_table(["Ticket", "Summary", "Assignee", "Status", "Days", "Level", "Recurring?"], rows))
     else:
         lines.append("No stale tickets this week.")
@@ -665,7 +652,6 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
         current_stale = {s["key"] for s in stale}
         resolved_keys = sorted(prev_stale_keys - current_stale)
         if resolved_keys:
-            # ponytail: enrich with summaries from any available ticket data
             all_tickets = {
                 t["key"]: t for t in a.get("doing_board", []) + a.get("completed", []) + a.get("backlog", [])
             }
@@ -677,7 +663,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
             for k in resolved_keys[:6]:
                 t = all_tickets.get(k)
                 if t:
-                    summary = t.get("summary", "")[:40]
+                    summary = t.get("summary", "")
                     status = _get_name(t, "status")
                     lines.append(f"- {_jl(k)} — {summary} → **{status}**")
                 else:
@@ -700,7 +686,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
         lines += ["### Critical Bugs (roster)", ""]
         rows = []
         for b in bugs:
-            rows.append([_jl(b["key"]), b["summary"][:50], b["status"], b["assignee"]])
+            rows.append([_jl(b["key"]), b["summary"], b["status"], b["assignee"]])
         lines.append(_md_table(["Ticket", "Summary", "Status", "Assignee"], rows))
         lines.append("")
 
@@ -752,7 +738,7 @@ def _s_epic_progress(a: dict, prev_epics: dict[str, int] | None = None) -> str:
             rows.append(["Done", str(len(done_children)), _condense_keys([c.get("key", "") for c in done_children])])
         for c in active_children:
             assignee = _get_name(c, "assignee", "Unassigned")
-            detail = f"{_jl(c.get('key', ''))} — {c.get('summary', '')[:50]} ({assignee})"
+            detail = f"{_jl(c.get('key', ''))} — {c.get('summary', '')} ({assignee})"
             rows.append([c.get("status", ""), "1", detail])
 
         if rows:
@@ -760,7 +746,7 @@ def _s_epic_progress(a: dict, prev_epics: dict[str, int] | None = None) -> str:
         if pct == 100:
             lines.append("\n> Complete. All children closed.")
         elif pct >= 80:
-            remaining = [c.get("summary", "")[:50] for c in active_children]
+            remaining = [c.get("summary", "") for c in active_children]
             lines.append(f"\n> Near-complete. Remaining: {', '.join(remaining) or 'cleanup'}.")
         lines.append("")
 
@@ -810,8 +796,6 @@ def _s_strats(a: dict, config: dict, prev_strats: dict[str, str] | None = None) 
         for s in items:
             k = s.get("key", "")
             summary = s.get("summary", "")
-            if len(summary) > 50:
-                summary = summary[:47] + "..."
             comment = _clean_status_summary(s.get("status_summary") or "")
             row = [f"{_jl(k)} — {summary}", s.get("status", ""), s.get("color", "—"), comment]
             if show_signals:
@@ -877,7 +861,6 @@ def _build_strat_key_signals(strats: list, signals: dict) -> list[str]:
         out.append(f"**{len(rp)} STRATs Release Pending** — close to shipping.")
 
     green = by_color.get("green", 0)
-    # ponytail: "not selected" is not a color issue, it's a backlog item
     non_green = {c: n for c, n in by_color.items() if c not in ("green", "not selected", "")}
     not_selected = by_color.get("not selected", 0)
 
@@ -910,7 +893,7 @@ def _s_pr_status(a: dict) -> str:
             rows.append(
                 [
                     _jl(t["key"]),
-                    t.get("summary", "")[:60],
+                    t.get("summary", ""),
                     str(len(prl)),
                     t.get("composite_pr_status", "NO_PRS"),
                     _pr_cell(prl),
@@ -946,7 +929,6 @@ def _s_pr_status(a: dict) -> str:
                     health_str,
                 ]
             )
-    # ponytail: fallback — extract open PRs from ticket pr_links when collector returns empty
     if not gh_rows:
         fallback_rows = []
         for t in a.get("doing_board", []):
@@ -1083,7 +1065,7 @@ def _s_doing_board(a: dict, config: dict) -> str:
                 rows.append(
                     [
                         _jl(t["key"]),
-                        t.get("summary", "")[:50],
+                        t.get("summary", ""),
                         t.get("status", ""),
                         str(days),
                         _pr_cell(t.get("pr_links", [])),
@@ -1100,7 +1082,7 @@ def _s_doing_board(a: dict, config: dict) -> str:
 
         completions = data.get("completions", [])
         if completions:
-            comp_strs = [f"{c.get('key', '')} ({c.get('summary', '')[:40]})" for c in completions[:8]]
+            comp_strs = [f"{c.get('key', '')} ({c.get('summary', '')})" for c in completions[:8]]
             suffix = f" (+{len(completions) - 8} more)" if len(completions) > 8 else ""
             lines += [f"> Completed {len(completions)} tickets this cycle: {', '.join(comp_strs)}{suffix}.", ""]
 
@@ -1110,7 +1092,7 @@ def _s_doing_board(a: dict, config: dict) -> str:
         rows = [
             [
                 _jl(t["key"]),
-                t.get("summary", "")[:50],
+                t.get("summary", ""),
                 t.get("status", ""),
                 str(t.get("days_worked", 0)),
                 _get_name(t, "priority"),
@@ -1144,7 +1126,7 @@ def _s_in_review(a: dict, config: dict) -> str:
             rows.append(
                 [
                     _jl(t["key"]),
-                    t.get("summary", "")[:50],
+                    t.get("summary", ""),
                     _get_name(t, "assignee", "Unassigned"),
                     str(t.get("days_worked", 0)),
                     _pr_cell(t.get("pr_links", [])),
@@ -1176,7 +1158,7 @@ def _s_backlog(a: dict) -> str:
                 [
                     str(i + 1),
                     _jl(k),
-                    t.get("summary", "")[:50],
+                    t.get("summary", ""),
                     _get_name(t, "priority"),
                     _get_name(t, "assignee", "Unassigned"),
                     flag,
@@ -1196,7 +1178,7 @@ def _s_completed(a: dict) -> str:
         rows = [
             [
                 _jl(t.get("key", "")),
-                t.get("summary", "")[:60],
+                t.get("summary", ""),
                 _get_name(t, "assignee", "—"),
                 _get_name(t, "issuetype", "—"),
             ]
@@ -1236,57 +1218,13 @@ def _s_learning(a: dict) -> str:
         rows = []
         for name in sorted(by_person):
             for t in by_person[name]:
-                rows.append([name, _jl(t.get("key", "")), t.get("summary", "")[:50], t.get("status", "")])
+                rows.append([name, _jl(t.get("key", "")), t.get("summary", ""), t.get("status", "")])
         lines.append(_md_table(["Assignee", "Ticket", "Summary", "Status"], rows))
         lines.append("")
 
     if missing:
         lines.append(f"**Missing learning ticket:** {', '.join(missing)}")
         lines.append("These roster members have no Learning ticket in the current release cycle.")
-        lines.append("")
-
-    lines += ["---", ""]
-    return "\n".join(lines)
-
-
-def _s_strats_readiness(a: dict) -> str:
-    readiness = a.get("strats_readiness", {})
-    if not readiness:
-        return ""
-    ready = readiness.get("ready_for_team", [])
-    needs_signoff = readiness.get("needs_signoff", [])
-    if not ready and not needs_signoff:
-        return ""
-
-    lines = [
-        "## 7. New STRATs — Readiness Pipeline",
-        "",
-        "> STRATs in Backlog/New status. Shows what's coming next.",
-        "",
-    ]
-    lines.append(
-        _md_table(
-            ["Status", "Count"],
-            [
-                ["Ready for Team (staff engineer signed off)", str(len(ready))],
-                ["Needs Staff Engineer Signoff", str(len(needs_signoff))],
-            ],
-        )
-    )
-    lines.append("")
-
-    if ready:
-        lines += ["### Ready for Team", ""]
-        rows = [
-            [
-                _jl(s.get("key", "")),
-                s.get("summary", "")[:60],
-                _get_name(s, "assignee", "Unassigned"),
-                s.get("status", ""),
-            ]
-            for s in ready
-        ]
-        lines.append(_md_table(["Key", "Summary", "Assignee", "Status"], rows))
         lines.append("")
 
     lines += ["---", ""]
@@ -1305,7 +1243,7 @@ def _s_third_party(a: dict) -> str:
         rows = [
             [
                 _jl(t.get("key", "")),
-                t.get("summary", "")[:50],
+                t.get("summary", ""),
                 t.get("status", ""),
                 _get_name(t, "assignee", "?"),
                 str(t.get("days_worked", 0)),
@@ -1372,7 +1310,6 @@ def generate_report(
     emoji = random.choice(_TITLE_EMOJIS)
     trend = analyzed.get("trend", "")
 
-    # ponytail: merge swimlane filter into config for header rendering
     if analyzed.get("swimlane_filter"):
         config = {**config, "swimlane_filter": analyzed["swimlane_filter"]}
 
@@ -1385,7 +1322,6 @@ def generate_report(
         _s_risk(analyzed, prev_stale_keys=prev_stale),
         _s_epic_progress(analyzed, prev_epics=prev_epics),
         _s_strats(analyzed, config, prev_strats=prev_strats),
-        _s_strats_readiness(analyzed),
         _s_pr_status(analyzed),
         _s_doing_board(analyzed, config),
         _s_in_review(analyzed, config),
@@ -1395,4 +1331,5 @@ def generate_report(
         _s_third_party(analyzed),
         _s_links(config),
     ]
-    return "\n".join(s for s in sections if s), emoji
+    md = "\n".join(s for s in sections if s)
+    return _linkify_ticket_keys(md), emoji

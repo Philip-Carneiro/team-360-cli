@@ -36,21 +36,23 @@ def _jira_get(session: requests.Session, base_url: str, path: str, params: dict 
 def _jira_search(
     session: requests.Session, base_url: str, jql: str, fields: str = "", max_results: int = 100, expand: str = ""
 ) -> list[dict]:
-    """Paginated JQL search via v3 endpoint."""
+    """Paginated JQL search via v3 endpoint (token-based pagination)."""
     results: list[dict] = []
-    start = 0
+    next_token: str | None = None
     while True:
-        params: dict[str, Any] = {"jql": jql, "maxResults": min(max_results - len(results), 100), "startAt": start}
+        params: dict[str, Any] = {"jql": jql, "maxResults": min(max_results - len(results), 100)}
         if fields:
             params["fields"] = fields
         if expand:
             params["expand"] = expand
+        if next_token:
+            params["nextPageToken"] = next_token
         data = _jira_get(session, base_url, "/rest/api/3/search/jql", params)
         issues = data.get("issues", [])
         results.extend(issues)
-        if data.get("isLast", True) or not issues or len(results) >= max_results:
+        next_token = data.get("nextPageToken")
+        if not next_token or not issues or len(results) >= max_results:
             break
-        start += len(issues)
     return results[:max_results]
 
 
@@ -362,14 +364,12 @@ def collect_doing_board(
             issue["changelog"] = {}
 
         ticket = _ticket_base(issue, roster)
-        days, source = _compute_days_worked(issue)
+        days, _ = _compute_days_worked(issue)
         ticket["days_worked"] = days
-        ticket["days_worked_source"] = source
 
         # Check PR status for ALL tickets that have PR links
         if ticket["prs"]:
             ticket["pr_links"] = _check_pr_statuses(ticket["prs"])
-            ticket["pr_count"] = len(ticket["pr_links"])
             ticket["composite_pr_status"] = _compute_composite_pr_status(ticket["pr_links"])
         else:
             # Try remote links as fallback
@@ -377,15 +377,12 @@ def collect_doing_board(
                 remote_prs = _get_all_pr_links(session, base, issue)
                 if remote_prs:
                     ticket["pr_links"] = remote_prs
-                    ticket["pr_count"] = len(remote_prs)
                     ticket["composite_pr_status"] = _compute_composite_pr_status(remote_prs)
                 else:
                     ticket["pr_links"] = []
-                    ticket["pr_count"] = 0
                     ticket["composite_pr_status"] = "NO_PRS"
             except Exception:
                 ticket["pr_links"] = []
-                ticket["pr_count"] = 0
                 ticket["composite_pr_status"] = "NO_PRS"
 
         results.append(ticket)
@@ -418,8 +415,6 @@ def collect_backlog(config: dict, jira_auth: tuple) -> list[dict]:
     for i, issue in enumerate(issues, 1):
         ticket = _ticket_base(issue, roster)
         ticket["rank"] = i
-        prio = (ticket["priority"] or "").lower()
-        ticket["buried_critical"] = i >= 6 and prio in ("critical", "blocker")
         results.append(ticket)
 
     return results
@@ -528,47 +523,6 @@ def collect_completed(config: dict, jira_auth: tuple, since_date: str) -> list[d
     return [_ticket_base(issue, roster) for issue in issues]
 
 
-def collect_activity_type(config: dict, jira_auth: tuple) -> dict:
-    """Query 6: Activity Type split. Only count tickets WITH a value."""
-    session = _make_session(jira_auth)
-    base = _base_url(config)
-    label = config["jira_label"]
-    components = config.get("jira_components", "")
-    projects = config.get("jira_projects", "")
-
-    jql_parts = [
-        f'labels = "{label}"',
-        "status NOT IN (Done, Closed)",
-        "cf[10464] IS NOT EMPTY",
-    ]
-    if components:
-        jql_parts.append(f'component = "{components}"')
-    if projects:
-        jql_parts.append(f"project IN ({projects})")
-    jql = " AND ".join(jql_parts)
-
-    issues = _jira_search(session, base, jql, fields="summary,status,customfield_10464")
-
-    counts: dict[str, int] = {}
-    for issue in issues:
-        val = issue.get("fields", {}).get("customfield_10464")
-        if isinstance(val, dict):
-            activity = val.get("value", "")
-        elif isinstance(val, str):
-            activity = val
-        else:
-            continue
-        if activity:
-            counts[activity] = counts.get(activity, 0) + 1
-
-    total = sum(counts.values())
-    return {
-        "counts": counts,
-        "total": total,
-        "percentages": {k: round(v / total * 100, 1) if total else 0 for k, v in counts.items()},
-    }
-
-
 def collect_testing_transitions(config: dict, jira_auth: tuple, since_date: str) -> list[dict]:
     """Query 7: Tickets that transitioned to Testing since previous 360."""
     session = _make_session(jira_auth)
@@ -648,9 +602,8 @@ def collect_epic_progress(config: dict, jira_auth: tuple, epics: list[dict]) -> 
 
         for child in children:
             ticket = _ticket_base(child, roster)
-            days, source = _compute_days_worked(child)
+            days, _ = _compute_days_worked(child)
             ticket["days_in_status"] = days
-            ticket["days_source"] = source
 
             status = ticket["status"]
             if status in ("Done", "Closed"):
@@ -681,35 +634,11 @@ def collect_epic_progress(config: dict, jira_auth: tuple, epics: list[dict]) -> 
                 "review_count": status_groups["Review"],
                 "testing_count": status_groups["Testing"],
                 "backlog_count": status_groups["Backlog"],
-                "completion_percentage": round(done / total * 100, 1) if total else 0,
                 "children": child_results,
             }
         )
 
     return results
-
-
-def collect_active_sprint(config: dict, jira_auth: tuple) -> dict | None:
-    """Fetch the active sprint for the doing board via Agile API."""
-    session = _make_session(jira_auth)
-    base = _base_url(config)
-    board_id = config.get("doing_board_id")
-    if not board_id:
-        return None
-    try:
-        data = _jira_get(session, base, f"/rest/agile/1.0/board/{board_id}/sprint", {"state": "active"})
-        sprints = data.get("values", [])
-        if sprints:
-            s = sprints[0]
-            return {
-                "id": s.get("id"),
-                "name": s.get("name", ""),
-                "start": s.get("startDate", ""),
-                "end": s.get("endDate", ""),
-            }
-    except Exception as e:
-        log.warning("Failed to fetch active sprint for board %s: %s", board_id, e)
-    return None
 
 
 def collect_learning_tickets(config: dict, jira_auth: tuple) -> list[dict]:
@@ -756,17 +685,6 @@ def collect_learning_tickets(config: dict, jira_auth: tuple) -> list[dict]:
         return []
 
 
-def _extract_board_project(config: dict) -> str:
-    """Extract JIRA project key from the doing board URL."""
-    import re
-
-    url = config.get("doing_board_url", "")
-    m = re.search(r"/projects/([A-Z0-9]+)/", url)
-    if m:
-        return m.group(1)
-    return ""
-
-
 def collect_board_swimlanes(config: dict, jira_auth: tuple, doing_board: list[dict]) -> list[dict]:
     """Discover board swimlanes by querying active tickets and grouping by fixVersion.
 
@@ -786,7 +704,6 @@ def collect_board_swimlanes(config: dict, jira_auth: tuple, doing_board: list[di
     if components:
         jql_parts.append(f'component = "{components}"')
 
-    # ponytail: single query, group in Python — avoids N requests per fixVersion
     try:
         result = _jira_get(
             session,
