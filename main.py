@@ -119,6 +119,15 @@ def _select_swimlane(swimlanes: list[dict]) -> str | None:
         print(f"Pick a number between 1 and {all_idx}.")
 
 
+def _swimlane_to_jql(swimlane: str) -> tuple[str, str]:
+    """Convert swimlane string (possibly comma-separated) to JQL and display name."""
+    parts = [s.strip() for s in swimlane.split(",") if s.strip()]
+    if len(parts) == 1:
+        return (f'fixVersion = "{parts[0]}"', parts[0])
+    quoted = ", ".join(f'"{p}"' for p in parts)
+    return (f"fixVersion IN ({quoted})", ", ".join(parts))
+
+
 def _jira_auth() -> tuple[str, str]:
     return (os.environ["JIRA_EMAIL"], os.environ["JIRA_API_TOKEN"])
 
@@ -313,8 +322,7 @@ def run(
             print("No swimlanes found — running with all tickets.")
     elif swimlane:
         # Direct swimlane name passed — resolve to JQL
-        swimlane_jql = f'fixVersion = "{swimlane}"'
-        swimlane_name = swimlane
+        swimlane_jql, swimlane_name = _swimlane_to_jql(swimlane)
 
     if swimlane_jql:
         log.info("Swimlane filter: %s (JQL: %s)", swimlane_name, swimlane_jql)
