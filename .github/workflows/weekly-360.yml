@@ -110,7 +110,7 @@ jobs:
               print("No Confluence URL to post")
               exit(0)
 
-          text = f":memo: *360 Report published*\n{url}"
+          text = f"{url}"
           payload = json.dumps({"text": text}).encode()
           webhook = os.environ["SLACK_WEBHOOK_URL"]
           req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"})

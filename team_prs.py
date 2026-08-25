@@ -240,6 +240,15 @@ def _pr_link(pr: dict) -> str:
     return f"[{prefix}{num}]({url})"
 
 
+def _review_status(decision: str) -> str:
+    upper = (decision or "").upper()
+    if upper == "APPROVED":
+        return "Approved"
+    if upper == "CHANGES_REQUESTED":
+        return "Changes Requested"
+    return "Waiting for Review"
+
+
 def _generate_report(team_name: str, roster: list[dict], prs: list[dict]) -> str:
     now = datetime.now(timezone.utc)
     lines: list[str] = []
@@ -315,6 +324,7 @@ def _generate_report(team_name: str, roster: list[dict], prs: list[dict]) -> str
                 "url": pr.get("url", ""),
                 "age": f"{pr.get('age_days', 0)}d",
                 "author": matched,
+                "status": _review_status(pr.get("review_decision", "")),
             }
         )
     lines.append("## Slack MSG")
@@ -394,7 +404,7 @@ def run(team_arg: str | None = None, verbose: bool = False) -> None:
                 url = pr["url"]
                 if pr.get("platform") == "github":
                     proc = subprocess.run(
-                        ["gh", "pr", "view", url, "--json", "createdAt,state"],
+                        ["gh", "pr", "view", url, "--json", "createdAt,state,reviewDecision"],
                         capture_output=True,
                         text=True,
                         timeout=15,
@@ -408,6 +418,7 @@ def run(team_arg: str | None = None, verbose: bool = False) -> None:
                         if created:
                             dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
                             pr["age_days"] = max((datetime.now(timezone.utc) - dt).days, 0)
+                        pr["review_decision"] = data.get("reviewDecision", "")
                 elif pr.get("platform") == "gitlab":
                     # ponytail: glab mr view by URL; falls back to keeping the PR if glab fails
                     proc = subprocess.run(

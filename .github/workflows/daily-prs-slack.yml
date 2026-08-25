@@ -69,7 +69,7 @@ jobs:
           for item in items:
               pr_num = item['text'].split(' - ')[0]
               lines.append(f"• {item['text']}  [{item['age']}] — {item['author']}")
-              lines.append(f"  ↳ {item['url']}")
+              lines.append(f"  ↳ {item['url']} - {item.get('status', 'Waiting for Review')}")
           body = "\n".join(lines)
 
           date = datetime.now(timezone.utc).strftime("%d/%m/%Y")
