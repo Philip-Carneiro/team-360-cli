@@ -65,7 +65,14 @@ def check_google():
             body = json.loads(r.read().decode())
             return None if body.get("access_token") else "no access_token in response"
     except urllib.error.HTTPError as e:
-        return f"HTTP {e.code} (invalid Google OAuth credentials)"
+        try:
+            body = e.read().decode()[:200]
+        except Exception:
+            body = ""
+        # invalid_grant in the body means the refresh token is expired/revoked
+        hint = "; refresh token expired/revoked" if "invalid_grant" in body else ""
+        detail = f": {body}" if body else ""
+        return f"HTTP {e.code} (invalid Google OAuth credentials{hint}){detail}"
     except Exception as e:
         return f"request failed: {e}"
 
@@ -76,6 +83,7 @@ CHECKS = {"teams": check_teams, "jira": check_jira, "google": check_google}
 def main():
     requested = [c.strip() for c in os.environ.get("PREFLIGHT_CHECKS", "").split(",") if c.strip()]
     failures = []
+    fail_lines = []
     for name in requested:
         fn = CHECKS.get(name)
         if not fn:
@@ -85,9 +93,13 @@ def main():
         if err:
             print(f"  FAIL {name}: {err}")
             failures.append(name)
+            fail_lines.append(f"FAIL {name}: {err}")
         else:
             print(f"  OK   {name}")
     if failures:
+        # persist details so notify_failure.py can include them in the alert
+        with open("preflight-failure.txt", "w") as f:
+            f.write("\n".join(fail_lines) + "\n")
         print(f"\nPreflight failed for: {', '.join(failures)}", file=sys.stderr)
         sys.exit(1)
     print("\nAll secrets OK")

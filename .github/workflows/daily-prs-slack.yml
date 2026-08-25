@@ -85,3 +85,9 @@ jobs:
               print(f"Slack post failed: {e}")
               sys.exit(1)
           PYEOF
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL_ALERTS: ${{ secrets.SLACK_WEBHOOK_URL_ALERTS }}
+        run: python3 scripts/notify_failure.py

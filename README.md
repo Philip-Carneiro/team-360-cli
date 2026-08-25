@@ -461,47 +461,7 @@ Schedule via cron, systemd timer, or any container orchestrator (Kubernetes Cron
 
 ### Option 3: GitHub Actions (scheduled workflow)
 
-Create `.github/workflows/360-report.yml`:
-
-```yaml
-name: Generate 360 Report
-on:
-  schedule:
-    - cron: '0 9 * * 1-5'  # weekdays at 9 AM UTC
-  workflow_dispatch:        # manual trigger
-
-jobs:
-  report:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - run: pip install -r requirements.txt
-
-      - run: python main.py --team "my team" --swimlane all
-        env:
-          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-          CONFLUENCE_URL: ${{ secrets.CONFLUENCE_URL }}
-          CONFLUENCE_USERNAME: ${{ secrets.CONFLUENCE_USERNAME }}
-          CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: 360-report
-          path: reports/
-```
-
-Store all credentials in GitHub Actions Secrets (Settings > Secrets and variables > Actions). The report gets published to Confluence automatically; the artifact is a backup.
+This repository includes two production workflows. See the **Workflows Included** section below for details on enabling them in your fork.
 
 ### Key Points for Unattended Runs
 
@@ -511,6 +471,75 @@ Store all credentials in GitHub Actions Secrets (Settings > Secrets and variable
 - Confluence publishing happens automatically if `confluence_root_dir_id` is set in the team config
 - Use `--test` for dry runs that don't archive previous reports on Confluence
 
+
+## Workflows Included (Running in Your Fork)
+
+This repository includes two production GitHub Actions workflows that run scheduled reports and post results to Slack. If you fork this repo and want to use them, follow the setup instructions below.
+
+### 1. Daily PRs Report → Slack
+
+**File:** `.github/workflows/daily-prs-slack.yml`
+
+**What it does:** Generates a daily report of open PRs with review status and posts it to Slack.
+
+**Schedule:** `0 6 * * 1-5` (6:00 AM UTC, Monday-Friday)
+
+**Secrets required:**
+- `TEAMS_JSON` — team configuration (same format as local `teams.json`)
+- `JIRA_BASE_URL` — Jira instance URL
+- `JIRA_EMAIL` — Jira account email
+- `JIRA_API_TOKEN` — Jira API token
+- `SLACK_WEBHOOK_URL` — Slack webhook for daily PR reports
+- `SLACK_WEBHOOK_URL_ALERTS` — Slack webhook for failure alerts (optional but recommended)
+
+### 2. Weekly 360 Report → Confluence + Slack
+
+**File:** `.github/workflows/weekly-360.yml`
+
+**What it does:** Generates a comprehensive 360 report, publishes it to Confluence, and posts the link to Slack.
+
+**Schedule:** `0 5 * * 4` (5:00 AM UTC, every Thursday)
+
+**Manual trigger:** Supports `workflow_dispatch` with a `test_mode` input for dry runs.
+
+**Secrets required:**
+- `TEAMS_JSON` — team configuration
+- `JIRA_BASE_URL` — Jira instance URL
+- `JIRA_EMAIL` — Jira account email
+- `JIRA_API_TOKEN` — Jira API token (also used for Confluence auth)
+- `GOOGLE_CLIENT_ID` — Google OAuth client ID (for Calendar integration)
+- `GOOGLE_CLIENT_SECRET` — Google OAuth client secret
+- `GOOGLE_REFRESH_TOKEN` — Google OAuth refresh token
+- `SLACK_WEBHOOK_URL_360_REPORT` — Slack webhook for posting the Confluence link
+- `SLACK_WEBHOOK_URL_ALERTS` — Slack webhook for failure alerts (optional but recommended)
+
+### Enabling Workflows in Your Fork
+
+1. **Enable Actions:** Go to the Actions tab in your fork and click "I understand my workflows, go ahead and enable them."
+
+2. **Add secrets:** Go to Settings > Secrets and variables > Actions, and add all the required secrets listed above for the workflows you want to use.
+
+   - **`SLACK_WEBHOOK_URL_ALERTS`** is the dedicated failure-alert webhook. When a workflow fails (e.g., invalid credentials, API errors, network issues), the failure notification is sent here instead of the regular report channels. This keeps your primary Slack channels clean and ensures critical alerts are not missed.
+
+3. **Preflight validation:** Both workflows run a preflight check before doing any work. If a credential is invalid or expired, the workflow fails fast and sends an alert to `SLACK_WEBHOOK_URL_ALERTS` with details:
+   - HTTP 401: Invalid or expired credential
+   - HTTP 403: Access denied
+   - For Google OAuth: response body includes `invalid_grant` when the refresh token is expired or revoked
+
+4. **Manual runs and schedule customization:**
+   - Both workflows support manual triggering via `workflow_dispatch` (Actions tab > workflow > Run workflow).
+   - To adjust the schedule, edit the `cron:` line in the workflow file.
+   - The weekly workflow has a `test_mode` input for dry runs that won't archive previous reports.
+
+### Failure Alerts
+
+When any step in a workflow fails, the final step posts a failure alert to the `SLACK_WEBHOOK_URL_ALERTS` webhook. The alert includes:
+- Workflow name, repository, job name
+- GitHub Actions run URL (for logs)
+- Branch and commit SHA
+- If the failure was in the preflight check: the specific credential error (e.g., "FAIL google: HTTP 401 (invalid Google OAuth credentials; refresh token expired/revoked)")
+
+This ensures you are immediately notified of workflow failures and can take action (e.g., renew an expired token, fix a credential) without waiting for the next scheduled run.
 
 
 ## Contributing
