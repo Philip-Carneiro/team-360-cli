@@ -332,7 +332,8 @@ def _header(
         f"**Trend**: {trend or 'No comparison baseline.'}",
     ]
     if config.get("swimlane_filter"):
-        fields.append(f"**Swimlane**: {config['swimlane_filter']}")
+        label = "Swimlanes" if "," in config["swimlane_filter"] else "Swimlane"
+        fields.append(f"**{label}**: {config['swimlane_filter']}")
     # ponytail: join fields into one block — no blank lines between them.
     # Use pipe-table style to keep each field on its own rendered line.
     lines += ["\n".join(fields), "", "---", ""]

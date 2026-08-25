@@ -114,8 +114,13 @@ def _extract_urls_from_pr_field(field_value: Any) -> list[dict]:
 
     url_pattern = re.compile(r'https?://[^\s<>"\')\]]+(?:/pull/\d+|/merge_requests/\d+)')
     urls: list[dict] = []
+    seen: set[str] = set()
     for url in url_pattern.findall(raw_text):
         url = url.strip().rstrip(".,;")
+        norm = url.rstrip("/")
+        if norm in seen:
+            continue
+        seen.add(norm)
         if "github.com" in url and "/pull/" in url:
             urls.append({"url": url, "platform": "github"})
         elif "merge_requests" in url:
