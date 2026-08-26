@@ -484,13 +484,18 @@ This repository includes two production GitHub Actions workflows that run schedu
 
 **Schedule:** `0 6 * * 1-5` (6:00 AM UTC, Monday-Friday)
 
+**Manual trigger:** Supports `workflow_dispatch` with a `test_mode` input that posts to `SLACK_WEBHOOK_URL_TEST` instead of the production channel.
+
 **Secrets required:**
 - `TEAMS_JSON` — team configuration (same format as local `teams.json`)
 - `JIRA_BASE_URL` — Jira instance URL
 - `JIRA_EMAIL` — Jira account email
 - `JIRA_API_TOKEN` — Jira API token
 - `SLACK_WEBHOOK_URL` — Slack webhook for daily PR reports
-- `SLACK_WEBHOOK_URL_ALERTS` — Slack webhook for failure alerts (optional but recommended)
+
+**Optional secrets:**
+- `SLACK_WEBHOOK_URL_TEST` — Slack webhook used when the workflow runs in test mode (`workflow_dispatch` with `test_mode` = true). If unset, test runs post nothing (by design, so test content never leaks into production).
+- `SLACK_WEBHOOK_URL_ALERTS` — Slack webhook for failure alerts. If unset, failures are logged but not posted.
 
 ### 2. Weekly 360 Report → Confluence + Slack
 
@@ -505,13 +510,36 @@ This repository includes two production GitHub Actions workflows that run schedu
 **Secrets required:**
 - `TEAMS_JSON` — team configuration
 - `JIRA_BASE_URL` — Jira instance URL
-- `JIRA_EMAIL` — Jira account email
-- `JIRA_API_TOKEN` — Jira API token (also used for Confluence auth)
+- `JIRA_EMAIL` — Jira account email (also used as `CONFLUENCE_USERNAME`)
+- `JIRA_API_TOKEN` — Jira API token (also used as `CONFLUENCE_API_TOKEN`)
 - `GOOGLE_CLIENT_ID` — Google OAuth client ID (for Calendar integration)
 - `GOOGLE_CLIENT_SECRET` — Google OAuth client secret
 - `GOOGLE_REFRESH_TOKEN` — Google OAuth refresh token
 - `SLACK_WEBHOOK_URL_360_REPORT` — Slack webhook for posting the Confluence link
-- `SLACK_WEBHOOK_URL_ALERTS` — Slack webhook for failure alerts (optional but recommended)
+
+**Optional secrets:**
+- `SLACK_WEBHOOK_URL_TEST` — Slack webhook used when `test_mode` = true. Posts the Confluence test page link to this webhook instead of the production channel. If unset, test runs post nothing (by design, so test content never leaks into production).
+- `SLACK_WEBHOOK_URL_ALERTS` — Slack webhook for failure alerts. If unset, failures are logged but not posted.
+
+### Secrets Reference
+
+All secrets used by the workflows, consolidated:
+
+| Secret | Required? | Used by | Purpose |
+|--------|-----------|---------|---------|
+| `TEAMS_JSON` | Required | Both | Team configuration (JSON format, same as local `teams.json`) |
+| `JIRA_BASE_URL` | Required | Both | Jira instance URL (e.g., `https://issues.redhat.com`) |
+| `JIRA_EMAIL` | Required | Both | Jira account email (reused as `CONFLUENCE_USERNAME` in weekly) |
+| `JIRA_API_TOKEN` | Required | Both | Jira API token (reused as `CONFLUENCE_API_TOKEN` in weekly) |
+| `SLACK_WEBHOOK_URL` | Required | Daily | Production Slack webhook for daily PR reports |
+| `GOOGLE_CLIENT_ID` | Required | Weekly | Google OAuth client ID for Calendar integration |
+| `GOOGLE_CLIENT_SECRET` | Required | Weekly | Google OAuth client secret |
+| `GOOGLE_REFRESH_TOKEN` | Required | Weekly | Google OAuth refresh token |
+| `SLACK_WEBHOOK_URL_360_REPORT` | Required | Weekly | Production Slack webhook for Confluence link |
+| `SLACK_WEBHOOK_URL_TEST` | Optional | Both | Test mode webhook. If unset, test runs post nothing (safe default). |
+| `SLACK_WEBHOOK_URL_ALERTS` | Optional | Both | Failure alert webhook. If unset, failures are logged but not posted. |
+| `GH_TOKEN` | Automatic | Both | GitHub token (provided automatically as `${{ github.token }}`) |
+| `CONFLUENCE_URL` | Optional | Local/advanced | Confluence base URL. Defaults to `{JIRA_BASE_URL}/wiki` when unset. Used only in local runs, not in workflows. |
 
 ### Enabling Workflows in Your Fork
 

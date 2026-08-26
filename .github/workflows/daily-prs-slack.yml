@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 6 * * 1-5'  # 06:00 UTC, Mon-Fri
   workflow_dispatch:        # trigger manual via UI
+    inputs:
+      test_mode:
+        description: 'Run in test mode (post to SLACK_WEBHOOK_URL_TEST)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   report:
@@ -43,6 +49,8 @@ jobs:
       - name: Post to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL_TEST: ${{ secrets.SLACK_WEBHOOK_URL_TEST }}
+          INPUT_TEST_MODE: ${{ inputs.test_mode }}
         run: |
           python3 - <<'PYEOF'
           import glob, json, os, re, sys, urllib.request
@@ -76,7 +84,14 @@ jobs:
           text = f":bar_chart: *PRs Status Today — {date}* ({len(items)} open)\n\n{body}"
 
           payload = json.dumps({"text": text}).encode()
-          url = os.environ["SLACK_WEBHOOK_URL"]
+          test = os.environ.get("INPUT_TEST_MODE") == "true"
+          if test:
+              url = os.environ.get("SLACK_WEBHOOK_URL_TEST")
+              if not url:
+                  print("test mode: SLACK_WEBHOOK_URL_TEST not set, skipping")
+                  sys.exit(0)
+          else:
+              url = os.environ["SLACK_WEBHOOK_URL"]
           req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
           try:
               urllib.request.urlopen(req)

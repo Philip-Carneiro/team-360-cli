@@ -24,7 +24,9 @@ KNOWN_BOTS = {
     "openshift-merge-robot",
 }
 
-PR_FIELDS = "number,title,author,createdAt,updatedAt,reviewDecision,statusCheckRollup,url,commits,reviews,comments"
+PR_FIELDS = (
+    "number,title,author,createdAt,updatedAt,reviewDecision,statusCheckRollup,url,commits,reviews,comments,isDraft"
+)
 
 
 def _name_match(name: str, roster: list[str]) -> bool:
@@ -172,6 +174,8 @@ def collect_github_prs(config: dict) -> dict:
                     log.warning("Failed to parse gh output (no label) for %s", repo)
 
         for pr in prs:
+            if pr.get("isDraft"):
+                continue
             author_login = pr.get("author", {}).get("login", "")
             days_since_owner = _compute_days_since_owner_update(pr)
             health = _compute_pr_health(pr, days_since_owner)
