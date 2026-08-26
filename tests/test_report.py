@@ -57,7 +57,7 @@ def test_enrich_agenda_summary_not_truncated():
     ticket = {
         "summary": long_summary,
         "status": "In Progress",
-        "days_worked": 5,
+        "days_in_status": 5,
         "assignee": "Engineer Name",
         "pr_links": [],
     }
@@ -72,3 +72,44 @@ def test_enrich_agenda_summary_not_truncated():
     last_words = long_summary.split()[-3:]  # Last 3 words
     for word in last_words:
         assert word in result, f"Last word '{word}' of summary should be present, indicating no truncation"
+
+
+def test_pr_open_days_single_open():
+    """Single OPEN PR with age_days returns the age as string."""
+    pr_links = [{"url": "https://github.com/acme/repo/pull/1", "state": "OPEN", "age_days": 12}]
+    result = report._pr_open_days(pr_links)
+    assert result == "12", f"Expected '12', got {result}"
+
+
+def test_pr_open_days_multiple_open_returns_max():
+    """Multiple OPEN PRs return the oldest (max age_days)."""
+    pr_links = [
+        {"url": "https://github.com/acme/repo/pull/1", "state": "OPEN", "age_days": 5},
+        {"url": "https://github.com/acme/repo/pull/2", "state": "OPEN", "age_days": 20},
+    ]
+    result = report._pr_open_days(pr_links)
+    assert result == "20", f"Expected '20' (max age), got {result}"
+
+
+def test_pr_open_days_excludes_non_open_states():
+    """PRs with state != OPEN (MERGED/CLOSED) are excluded, even if they have age_days."""
+    pr_links = [
+        {"url": "https://github.com/acme/repo/pull/1", "state": "MERGED", "age_days": 30},
+        {"url": "https://github.com/acme/repo/pull/2", "state": "CLOSED", "age_days": 25},
+        {"url": "https://github.com/acme/repo/pull/3", "state": "OPEN"},
+    ]
+    result = report._pr_open_days(pr_links)
+    assert result == "—", f"Expected '—' (no OPEN with age_days), got {result}"
+
+
+def test_pr_open_days_missing_age_days():
+    """OPEN PR without age_days field returns em-dash."""
+    pr_links = [{"url": "https://github.com/acme/repo/pull/1", "state": "OPEN"}]
+    result = report._pr_open_days(pr_links)
+    assert result == "—", f"Expected '—' (age_days missing), got {result}"
+
+
+def test_pr_open_days_empty_list():
+    """Empty pr_links list returns em-dash."""
+    result = report._pr_open_days([])
+    assert result == "—", f"Expected '—' (empty list), got {result}"

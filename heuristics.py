@@ -104,7 +104,7 @@ def _find_stale(board: list, roster: list[dict]) -> list[dict]:
             continue
         if _classify(t, roster) == "THIRD-PARTY":
             continue
-        days = t.get("days_worked") or 0
+        days = t.get("days_in_status") or 0
         level = _stale_level(days)
         if level:
             out.append(
@@ -113,12 +113,12 @@ def _find_stale(board: list, roster: list[dict]) -> list[dict]:
                     "summary": t.get("summary", ""),
                     "status": t.get("status", ""),
                     "assignee": _get_assignee_name(t) or "Unassigned",
-                    "days_worked": days,
+                    "days_in_status": days,
                     "level": level,
                     "priority": _get_field_str(t, "priority"),
                 }
             )
-    out.sort(key=lambda x: x["days_worked"], reverse=True)
+    out.sort(key=lambda x: x["days_in_status"], reverse=True)
     return out
 
 
@@ -148,7 +148,7 @@ def _find_overloaded(board: list, roster: list[dict]) -> list[dict]:
         if len(tickets) >= 3 and len(epics) >= 2:
             signals.append(f"Context-switching ({len(tickets)} items across {len(epics)} epics)")
 
-        stale_epic_set = {_epic_key(t) for t in tickets if (t.get("days_worked") or 0) >= 7 and _epic_key(t)}
+        stale_epic_set = {_epic_key(t) for t in tickets if (t.get("days_in_status") or 0) >= 7 and _epic_key(t)}
         if len(stale_epic_set) >= 2:
             signals.append(f"Spread thin + stale across {len(stale_epic_set)} epics")
 
@@ -313,7 +313,7 @@ def _build_per_person(board: list, roster: list[dict], stale: list[dict], testin
         if name and name in pp:
             pp[name]["tickets"].append(t)
             if t["key"] in stale_keys:
-                pp[name]["alerts"].append(f"{t['key']} stale ({t.get('days_worked', 0)}d)")
+                pp[name]["alerts"].append(f"{t['key']} stale ({t.get('days_in_status', 0)}d)")
 
     qe_members = [m for m in roster if _is_qe(m)]
     for tt in testing_tx:
@@ -357,7 +357,7 @@ def _build_agenda(
                 {
                     "priority": 1,
                     "text": f"{_ticket_link(s['key'])} — {s['summary']} — "
-                    f"{s['level']} ({s['days_worked']}d, carried over from {prev_date})",
+                    f"{s['level']} ({s['days_in_status']}d, carried over from {prev_date})",
                 }
             )
 
@@ -375,7 +375,7 @@ def _build_agenda(
             agenda.append(
                 {
                     "priority": 4,
-                    "text": f"{_ticket_link(s['key'])} — {s['summary']} — {s['level']} ({s['days_worked']}d)",
+                    "text": f"{_ticket_link(s['key'])} — {s['summary']} — {s['level']} ({s['days_in_status']}d)",
                 }
             )
 
@@ -531,11 +531,14 @@ def apply_heuristics(
 
     # Wire real PR health into ticket pr_links (FIX 3)
     pr_health_map: dict[str, dict] = {}
+    pr_age_map: dict[str, int] = {}
     for prs in github_prs.values():
         for pr in prs:
             url = pr.get("url")
             if url and pr.get("pr_health"):
                 pr_health_map[url] = pr["pr_health"]
+            if url:
+                pr_age_map[url] = pr.get("age_days")
 
     for ticket in doing_board:
         for pr_link in ticket.get("pr_links", []):
@@ -544,6 +547,8 @@ def apply_heuristics(
                 health_dict = pr_health_map[url]
                 pr_link["pr_health"] = health_dict.get("category", "")
                 pr_link["pr_health_detail"] = health_dict.get("detail", "")
+            if url in pr_age_map:
+                pr_link["age_days"] = pr_age_map[url]
 
     stale = _find_stale(doing_board, roster)
     overloaded = _find_overloaded(doing_board, roster)
