@@ -17,7 +17,6 @@ TOKEN_FILE = Path.home() / ".config" / "google-calendar-token.json"
 
 _PTO_KEYWORDS = {"pto", "ooo", "leave", "vacation", "holiday", "off", "out of office", "annual leave"}
 _SICK_KEYWORDS = {"sick", "sickday", "sick day", "sick leave", "medical", "unwell", "ill"}
-# ponytail: generic titles with no name attached — skip these
 _SKIP_EXACT = {"ooo", "pto", "office hours", "meeting", "standup", "sync", "1:1", "team", "sick", "sickday", "sick day"}
 
 
@@ -30,7 +29,6 @@ def _load_google_creds() -> tuple[str, str, str] | None:
     if all([client_id, client_secret, refresh_token]):
         return client_id, client_secret, refresh_token
 
-    # ponytail: fallback to token file for local dev
     if not TOKEN_FILE.exists():
         log.warning(
             "Google Calendar: no env vars (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "
@@ -128,7 +126,8 @@ def _match_event_to_roster(summary: str, roster: list[dict]) -> str | None:
     return None
 
 
-def _parse_event_dates(event: dict) -> list[str]:
+def _parse_event_dates(event: dict) -> list[tuple[str, datetime]]:
+    """Parse event dates, returning (display_str, sort_key_datetime) tuples."""
     start = event.get("start", {})
     end = event.get("end", {})
 
@@ -138,12 +137,12 @@ def _parse_event_dates(event: dict) -> list[str]:
         dates = []
         d = s
         while d < e:
-            dates.append(d.strftime("%d/%m"))
+            dates.append((d.strftime("%d/%m"), d))
             d += timedelta(days=1)
-        return dates or [s.strftime("%d/%m")]
+        return dates or [(s.strftime("%d/%m"), s)]
     elif "dateTime" in start:
         s = datetime.fromisoformat(start["dateTime"])
-        return [s.strftime("%d/%m")]
+        return [(s.strftime("%d/%m"), s)]
     return []
 
 
@@ -167,7 +166,7 @@ def collect_absences(
     time_min = f"{since_date}T00:00:00Z"
     time_max = f"{until_date}T23:59:59Z" if until_date else datetime.now(timezone.utc).strftime("%Y-%m-%dT23:59:59Z")
 
-    raw: dict[str, dict[str, set[str]]] = {}
+    raw: dict[str, dict[str, list[tuple[str, datetime]]]] = {}
 
     for cal_id in calendar_ids:
         events = _fetch_events(token, cal_id, time_min, time_max)
@@ -178,29 +177,21 @@ def collect_absences(
             if matched:
                 absence_type = _classify_absence(summary)
                 dates = _parse_event_dates(event)
-                raw.setdefault(matched, {}).setdefault(absence_type, set()).update(dates)
+                raw.setdefault(matched, {}).setdefault(absence_type, []).extend(dates)
 
     result: dict[str, dict[str, list[str]]] = {}
     for name, types in raw.items():
         result[name] = {}
-        for atype, dates in types.items():
-            result[name][atype] = sorted(dates, key=lambda d: datetime.strptime(d, "%d/%m"))
+        for atype, date_tuples in types.items():
+            sorted_tuples = sorted(date_tuples, key=lambda x: x[1])
+            seen: set[str] = set()
+            dedupe = []
+            for display, _ in sorted_tuples:
+                if display not in seen:
+                    seen.add(display)
+                    dedupe.append(display)
+            result[name][atype] = dedupe
 
     if result:
         log.info("Absences detected: %s", {k: {t: len(d) for t, d in v.items()} for k, v in result.items()})
     return result
-
-
-# ponytail: backwards compat — old callers can still use collect_pto
-def collect_pto(
-    calendar_ids: list[str], roster: list[dict], since_date: str, until_date: str | None = None
-) -> dict[str, list[str]]:
-    """Legacy wrapper: returns flat {name: [dates]} merging all absence types."""
-    absences = collect_absences(calendar_ids, roster, since_date, until_date)
-    flat: dict[str, list[str]] = {}
-    for name, types in absences.items():
-        all_dates: set[str] = set()
-        for dates in types.values():
-            all_dates.update(dates)
-        flat[name] = sorted(all_dates, key=lambda d: datetime.strptime(d, "%d/%m"))
-    return flat

@@ -10,6 +10,8 @@ import logging
 import subprocess
 from datetime import datetime, timezone
 
+from collectors._dates import _days_since, _parse_iso
+
 log = logging.getLogger(__name__)
 
 KNOWN_BOTS = {
@@ -22,7 +24,9 @@ KNOWN_BOTS = {
     "openshift-merge-robot",
 }
 
-PR_FIELDS = "number,title,author,createdAt,updatedAt,reviewDecision,statusCheckRollup,url,commits,reviews,comments"
+PR_FIELDS = (
+    "number,title,author,createdAt,updatedAt,reviewDecision,statusCheckRollup,url,commits,reviews,comments,isDraft"
+)
 
 
 def _name_match(name: str, roster: list[str]) -> bool:
@@ -30,21 +34,6 @@ def _name_match(name: str, roster: list[str]) -> bool:
         return False
     name_lower = name.lower()
     return any(name_lower in m.lower() or m.lower() in name_lower for m in roster)
-
-
-def _parse_iso(s: str | None) -> datetime | None:
-    if not s:
-        return None
-    try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _days_since(dt: datetime | None) -> int | None:
-    if not dt:
-        return None
-    return max((datetime.now(timezone.utc) - dt).days, 0)
 
 
 def _compute_days_since_owner_update(pr: dict) -> int:
@@ -71,7 +60,6 @@ def _compute_days_since_owner_update(pr: dict) -> int:
                 dates.append(d)
 
     if not dates:
-        # ponytail: fallback to updatedAt only if we have nothing else
         fallback = _parse_iso(pr.get("updatedAt"))
         if fallback:
             dates.append(fallback)
@@ -186,6 +174,8 @@ def collect_github_prs(config: dict) -> dict:
                     log.warning("Failed to parse gh output (no label) for %s", repo)
 
         for pr in prs:
+            if pr.get("isDraft"):
+                continue
             author_login = pr.get("author", {}).get("login", "")
             days_since_owner = _compute_days_since_owner_update(pr)
             health = _compute_pr_health(pr, days_since_owner)

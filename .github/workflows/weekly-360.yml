@@ -100,7 +100,9 @@ jobs:
       - name: Post Confluence link to Slack
         if: steps.report.outputs.confluence_url
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_360_REPORT }}
+          SLACK_WEBHOOK_URL_360_REPORT: ${{ secrets.SLACK_WEBHOOK_URL_360_REPORT }}
+          SLACK_WEBHOOK_URL_TEST: ${{ secrets.SLACK_WEBHOOK_URL_TEST }}
+          INPUT_TEST_MODE: ${{ inputs.test_mode }}
         run: |
           python3 - <<'PYEOF'
           import json, os, urllib.request
@@ -112,7 +114,14 @@ jobs:
 
           text = f"{url}"
           payload = json.dumps({"text": text}).encode()
-          webhook = os.environ["SLACK_WEBHOOK_URL"]
+          test = os.environ.get("INPUT_TEST_MODE") == "true"
+          if test:
+              webhook = os.environ.get("SLACK_WEBHOOK_URL_TEST")
+              if not webhook:
+                  print("test mode: SLACK_WEBHOOK_URL_TEST not set, skipping")
+                  exit(0)
+          else:
+              webhook = os.environ["SLACK_WEBHOOK_URL_360_REPORT"]
           req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"})
           try:
               urllib.request.urlopen(req)
