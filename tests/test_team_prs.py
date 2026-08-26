@@ -3,8 +3,10 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from team_prs import (
+    _KNOWN_BOT_LOGINS,
     _collect_github_prs,
     _dedupe_prs,
+    _extend_bot_logins,
     _human_review_decision,
     _is_bot,
     _match_to_roster,
@@ -152,6 +154,8 @@ def _mock_config():
         repo_mapping={"upstream": "https://github.com/acme/repo"},
         jira_label="test-label",
         jira_components=["test-component"],
+        bot_logins=[],
+        strat_prefix="",
     )
 
 
@@ -685,8 +689,17 @@ def test_is_bot_known_login_without_suffix():
     """Bot in _KNOWN_BOT_LOGINS without [bot] suffix is detected (bug fix for #9229)."""
     assert _is_bot("coderabbitai")
     assert _is_bot("dependabot")
-    assert _is_bot("odh-dashboard-agent")
-    assert _is_bot("openshift-merge-bot")
+    assert _is_bot("renovate")
+
+
+def test_is_bot_extended_from_config():
+    """Extra bot logins from team config are detected only after registration."""
+    assert not _is_bot("ci-custom-bot")
+    _extend_bot_logins(["ci-custom-bot"])
+    try:
+        assert _is_bot("ci-custom-bot")
+    finally:
+        _KNOWN_BOT_LOGINS.discard("ci-custom-bot")
 
 
 def test_is_bot_human_login():

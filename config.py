@@ -44,6 +44,8 @@ class TeamConfig:
     activity_targets: dict[str, int] = field(default_factory=dict)
     leader_of_flow: str = ""
     release_leaders: str = ""
+    strat_prefix: str = ""
+    bot_logins: list[str] = field(default_factory=list)
 
     # context/jira.md
     jira_projects: list[str] = field(default_factory=list)
@@ -196,10 +198,15 @@ def _parse_team_md(text: str, config: TeamConfig) -> None:
     config.release_leaders = _field(text, "Release Leaders") or ""
     config.jira_label = _field(text, "Jira Label") or ""
     config.main_swimlane = _field(text, "Main Swimlane") or ""
+    config.strat_prefix = _field(text, "Strat Prefix") or ""
 
     comp = _field(text, "Jira Components")
     if comp:
         config.jira_components = [re.sub(r"\s*\(.*\)$", "", c.strip()) for c in comp.split(",")]
+
+    bots = _field(text, "Bot Logins")
+    if bots:
+        config.bot_logins = [b.strip() for b in bots.split(",") if b.strip()]
 
     # Boards table
     for row in _parse_table_rows(text, r"Board", col_count=2):  # col_count for fallback

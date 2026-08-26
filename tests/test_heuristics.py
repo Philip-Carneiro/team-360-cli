@@ -94,7 +94,7 @@ def test_find_stale_uses_days_in_status_not_days_worked():
     ]
     roster = [{"name": "Engineer"}]
 
-    stale = _find_stale(board, roster)
+    stale = _find_stale(board, roster, "")
 
     assert len(stale) == 0, f"Ticket with days_in_status=2 should NOT be stale, got: {stale}"
 

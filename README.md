@@ -103,7 +103,7 @@ All `*_md` fields accept a Confluence page URL, a bare page ID, or `"local"` to 
 
 See the [`examples/`](examples/) directory for complete examples of each page:
 
-- [`examples/team.md`](examples/team.md) — roster, boards, JIRA label, cadence, activity targets, PTO calendars
+- [`examples/team.md`](examples/team.md) — roster, boards, JIRA label, cadence, activity targets, PTO calendars. Optional fields: Strat Prefix (strategic initiative filter), Bot Logins (additional bot accounts to exclude from PR reports).
 - [`examples/jira.md`](examples/jira.md) — JIRA projects, JQL templates, repository mapping
 - [`examples/confluence.md`](examples/confluence.md) — 360 report folder IDs
 
@@ -486,6 +486,8 @@ This repository includes two production GitHub Actions workflows that run schedu
 
 **Manual trigger:** Supports `workflow_dispatch` with a `test_mode` input that posts to `SLACK_WEBHOOK_URL_TEST` instead of the production channel.
 
+**Variables:** The workflow reads the repository variable `TEAM_NAME` (default: `all`). Set this in Settings > Secrets and variables > Actions > Variables to specify which team to report on.
+
 **Secrets required:**
 - `TEAMS_JSON` — team configuration (same format as local `teams.json`)
 - `JIRA_BASE_URL` — Jira instance URL
@@ -528,7 +530,7 @@ All secrets used by the workflows, consolidated:
 | Secret | Required? | Used by | Purpose |
 |--------|-----------|---------|---------|
 | `TEAMS_JSON` | Required | Both | Team configuration (JSON format, same as local `teams.json`) |
-| `JIRA_BASE_URL` | Required | Both | Jira instance URL (e.g., `https://issues.redhat.com`) |
+| `JIRA_BASE_URL` | Required | Both | Jira instance URL (e.g., `https://your-org.atlassian.net`) |
 | `JIRA_EMAIL` | Required | Both | Jira account email (reused as `CONFLUENCE_USERNAME` in weekly) |
 | `JIRA_API_TOKEN` | Required | Both | Jira API token (reused as `CONFLUENCE_API_TOKEN` in weekly) |
 | `SLACK_WEBHOOK_URL` | Required | Daily | Production Slack webhook for daily PR reports |

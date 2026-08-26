@@ -8,6 +8,8 @@
 **Jira Label:** `dashboard-alpha`
 **Jira Components:** Platform Dashboard (required on every ticket)
 **Main Swimlane:** 2.5 GA PRODUCT RELEASE (JQL USED FOR MAIN SWIMLANE)
+**Strat Prefix:** `STRAT` (optional — filters strategic initiative tickets; feature off if unset)
+**Bot Logins:** `org-bot, custom-ci-bot` (optional — additional bot accounts to filter from PR reports)
 
 ## Boards
 

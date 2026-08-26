@@ -259,6 +259,8 @@ def run(
         "jira_components": config.jira_components[0] if config.jira_components else "",
         "jira_base_url": jira_base,
         "roster": roster_dicts,
+        "strat_prefix": config.strat_prefix,
+        "bot_logins": config.bot_logins,
         "boards": {b.name: {"id": b.board_id, "url": b.url} for b in config.boards},
         "doing_board_url": doing_board_url,
         "doing_board_name": doing_board_name,

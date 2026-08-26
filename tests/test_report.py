@@ -8,25 +8,25 @@ import report
 def test_linkify_wraps_raw_key():
     """Raw ticket key in text becomes a proper markdown link."""
     with patch("report._jira_base", return_value="https://jira.example.com"):
-        result = report._linkify_ticket_keys("Working on RHOAIENG-123 today")
-        expected = "Working on [RHOAIENG-123](https://jira.example.com/browse/RHOAIENG-123) today"
+        result = report._linkify_ticket_keys("Working on PROJ-123 today")
+        expected = "Working on [PROJ-123](https://jira.example.com/browse/PROJ-123) today"
         assert result == expected, f"Expected exact link, got: {result}"
 
 
 def test_linkify_leaves_existing_link_intact():
     """Already-linked ticket is not double-wrapped."""
-    input_text = "See [RHOAIENG-123](https://jira.example.com/browse/RHOAIENG-123) for details"
+    input_text = "See [PROJ-123](https://jira.example.com/browse/PROJ-123) for details"
     with patch("report._jira_base", return_value="https://jira.example.com"):
         result = report._linkify_ticket_keys(input_text)
         assert result == input_text, "Existing link should remain unchanged"
         # Verify no double-wrapping occurred
-        assert result.count("browse/RHOAIENG-123") == 1, "Key should appear in URL exactly once"
-        assert "browse/RHOAIENG-123](" not in result, "No double-wrap pattern should exist"
+        assert result.count("browse/PROJ-123") == 1, "Key should appear in URL exactly once"
+        assert "browse/PROJ-123](" not in result, "No double-wrap pattern should exist"
 
 
 def test_linkify_no_base_returns_unchanged():
     """When no Jira base URL is configured, text is returned unchanged."""
-    input_text = "RHOAIENG-123 is a ticket"
+    input_text = "PROJ-123 is a ticket"
     with patch("report._jira_base", return_value=""):
         result = report._linkify_ticket_keys(input_text)
         assert result == input_text, "Text should be unchanged when base URL is empty"
@@ -62,7 +62,7 @@ def test_enrich_agenda_summary_not_truncated():
         "pr_links": [],
     }
 
-    result = report._enrich_agenda_text("RHOAIENG-999", ticket)
+    result = report._enrich_agenda_text("PROJ-999", ticket)
 
     # Assert the full summary appears in the enriched text (no truncation)
     assert long_summary in result, "Full summary should appear in enriched text"
