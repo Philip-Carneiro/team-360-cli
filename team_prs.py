@@ -244,13 +244,15 @@ def _pr_link(pr: dict) -> str:
 
 _KNOWN_BOT_LOGINS = {
     "coderabbitai",
-    "odh-dashboard-agent",
     "dependabot",
     "renovate",
-    "openshift-merge-bot",
-    "openshift-ci",
-    "openshift-merge-robot",
 }
+
+
+def _extend_bot_logins(extra: list[str]) -> None:
+    """# ponytail: extend module-level bot set once per run from config"""
+    for b in extra:
+        _KNOWN_BOT_LOGINS.add(b.lower())
 
 
 def _is_bot(login: str) -> bool:
@@ -450,6 +452,9 @@ def run(team_arg: str | None = None, verbose: bool = False) -> None:
 
     print(f"\nLoading config for {team_name}...", flush=True)
     config = load_config(sources=sources)
+
+    if config.bot_logins:
+        _extend_bot_logins(config.bot_logins)
 
     if not config.team_name:
         print("Failed to load team config.")

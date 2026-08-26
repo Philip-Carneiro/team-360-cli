@@ -15,13 +15,9 @@ from collectors._dates import _days_since, _parse_iso
 log = logging.getLogger(__name__)
 
 KNOWN_BOTS = {
+    "coderabbitai",
     "dependabot",
     "renovate",
-    "openshift-merge-bot",
-    "openshift-ci",
-    "red-hat-konflux",
-    "konflux-internal-p",
-    "openshift-merge-robot",
 }
 
 PR_FIELDS = (
@@ -133,6 +129,7 @@ def collect_github_prs(config: dict) -> dict:
     repos = config.get("github_repos", [])
     roster = config.get("roster", [])
     label = config.get("jira_label", "")
+    bot_logins = set(KNOWN_BOTS) | {b.lower() for b in config.get("bot_logins", [])}
 
     roster_prs: list[dict] = []
     external_prs: list[dict] = []
@@ -197,7 +194,7 @@ def collect_github_prs(config: dict) -> dict:
                 ],
             }
 
-            if author_login.lower() in KNOWN_BOTS:
+            if author_login.lower() in bot_logins:
                 bot_prs.append(entry)
             elif _name_match(author_login, roster):
                 roster_prs.append(entry)

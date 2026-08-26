@@ -76,8 +76,8 @@ def _is_testing(t: dict) -> bool:
     return str(s).lower() in ("testing", "in testing")
 
 
-def _is_strat(t: dict) -> bool:
-    return t.get("key", "").startswith("RHAISTRAT")
+def _is_strat(t: dict, prefix: str) -> bool:
+    return bool(prefix) and t.get("key", "").startswith(prefix)
 
 
 def _is_learning(t: dict) -> bool:
@@ -97,10 +97,10 @@ def _ticket_link(key: str) -> str:
     return f"[{key}]({base}/browse/{key})" if base else key
 
 
-def _find_stale(board: list, roster: list[dict]) -> list[dict]:
+def _find_stale(board: list, roster: list[dict], strat_prefix: str) -> list[dict]:
     out = []
     for t in board:
-        if _is_epic(t) or _is_testing(t) or _is_strat(t) or _is_learning(t):
+        if _is_epic(t) or _is_testing(t) or _is_strat(t, strat_prefix) or _is_learning(t):
             continue
         if _classify(t, roster) == "THIRD-PARTY":
             continue
@@ -346,6 +346,7 @@ def _build_agenda(
     board: list,
     roster: list[dict],
     prev: dict | None,
+    strat_prefix: str,
 ) -> list[dict]:
     agenda: list[dict] = []
     prev_stale_keys = {s.get("key") for s in (prev or {}).get("stale_items", [])}
@@ -399,7 +400,12 @@ def _build_agenda(
                 k = part.split("[")[-1]
                 seen_keys.add(k)
     for t in board:
-        if _classify(t, roster) == "UNASSIGNED" and not _is_epic(t) and not _is_strat(t) and t["key"] not in seen_keys:
+        if (
+            _classify(t, roster) == "UNASSIGNED"
+            and not _is_epic(t)
+            and not _is_strat(t, strat_prefix)
+            and t["key"] not in seen_keys
+        ):
             agenda.append({"priority": 8, "text": f"{_ticket_link(t['key'])} — {t.get('summary', '')} — needs owner"})
 
     agenda.sort(key=lambda x: x["priority"])
@@ -528,6 +534,7 @@ def apply_heuristics(
 ) -> dict:
     """Apply all heuristic rules and return analyzed data."""
     roster = config.get("roster", [])
+    strat_prefix = config.get("strat_prefix", "")
 
     # Wire real PR health into ticket pr_links (FIX 3)
     pr_health_map: dict[str, dict] = {}
@@ -550,7 +557,7 @@ def apply_heuristics(
             if url in pr_age_map:
                 pr_link["age_days"] = pr_age_map[url]
 
-    stale = _find_stale(doing_board, roster)
+    stale = _find_stale(doing_board, roster, strat_prefix)
     overloaded = _find_overloaded(doing_board, roster)
     bugs = _find_critical_bugs(doing_board, roster)
     buried = _find_buried_criticals(backlog)
@@ -573,7 +580,9 @@ def apply_heuristics(
         if name in per_person:
             per_person[name]["learning_tickets"] = tickets
 
-    agenda = _build_agenda(stale, overloaded, bugs, pr_alerts, strat_signals, doing_board, roster, previous_360)
+    agenda = _build_agenda(
+        stale, overloaded, bugs, pr_alerts, strat_signals, doing_board, roster, previous_360, strat_prefix
+    )
     snapshot = _build_snapshot(doing_board, stale, bugs, completed, roster)
     activity = _activity_split(doing_board, completed)
     third_party = [t for t in doing_board if _classify(t, roster) == "THIRD-PARTY"]

@@ -44,7 +44,8 @@ jobs:
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-        run: python3 team_prs.py --team green
+          TEAM_NAME: ${{ vars.TEAM_NAME }}
+        run: python3 team_prs.py --team "${TEAM_NAME:-all}"
 
       - name: Post to Slack
         env:
