@@ -2,7 +2,7 @@ name: Weekly 360 Report
 
 on:
   schedule:
-    - cron: '0 5 * * 4'  # Thursday 5AM UTC
+    - cron: '0 6 * * 3'  # Wednesday 6AM UTC
   workflow_dispatch:
     inputs:
       test_mode:

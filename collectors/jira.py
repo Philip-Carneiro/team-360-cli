@@ -5,6 +5,7 @@ All queries use JIRA API v3 (/rest/api/3/).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -15,10 +16,9 @@ from typing import Any
 
 import requests
 
-log = logging.getLogger(__name__)
+from collectors._dates import _days_since, _parse_iso
 
-INACTIVE_STATUSES = {"backlog", "new", "to do", "open"}
-ACTIVE_STATUSES = {"in progress", "review", "in review", "testing"}
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def _check_pr_status(url: str, platform: str) -> dict:
     try:
         if platform == "github":
             proc = subprocess.run(
-                ["gh", "pr", "view", url, "--json", "state,mergedAt,url"],
+                ["gh", "pr", "view", url, "--json", "state,mergedAt,url,createdAt"],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -164,6 +164,9 @@ def _check_pr_status(url: str, platform: str) -> dict:
                 data = json.loads(proc.stdout)
                 result["state"] = "MERGED" if data.get("mergedAt") else data.get("state", "OPEN").upper()
                 result["checked"] = True
+                age = _days_since(_parse_iso(data.get("createdAt")))
+                if age is not None:
+                    result["age_days"] = age
         elif platform == "gitlab":
             gitlab_host = os.environ.get("GITLAB_HOST", "")
             match = re.search(r"https?://[^/]+/(.+)/-/merge_requests/(\d+)", url)
@@ -181,6 +184,9 @@ def _check_pr_status(url: str, platform: str) -> dict:
                     state = data.get("state", "opened")
                     result["state"] = "MERGED" if state == "merged" else "OPEN" if state == "opened" else state.upper()
                     result["checked"] = True
+                    age = _days_since(_parse_iso(data.get("created_at")))
+                    if age is not None:
+                        result["age_days"] = age
     except Exception as e:
         log.warning("PR status check failed for %s: %s", url, e)
     return result
@@ -228,72 +234,28 @@ def _get_all_pr_links(session: requests.Session, base_url: str, issue: dict) -> 
     return checked
 
 
-# ---------------------------------------------------------------------------
-# Days Worked — changelog-based algorithm
-# ---------------------------------------------------------------------------
-
-
-def _compute_days_worked(issue: dict) -> tuple[int, str]:
-    """Compute days worked by current assignee from changelog.
-
-    Returns (days_worked, source) where source describes which fallback was used.
-    """
-    assignee = issue.get("fields", {}).get("assignee")
-    assignee_name = (assignee or {}).get("displayName", "") if assignee else ""
-    changelog = issue.get("changelog", {})
-    histories = changelog.get("histories", [])
+def _days_in_status(issue: dict) -> int:
+    """Dias desde que o ticket entrou no status ATUAL (última transição de status para o status corrente)."""
+    fields = issue.get("fields", {})
+    current = (fields.get("status", {}) or {}).get("name", "")
+    current_l = current.lower()
     today = datetime.now(timezone.utc)
-
-    # Primary: find when current assignee last moved ticket from inactive→active
-    candidate_dates: list[datetime] = []
+    histories = (issue.get("changelog", {}) or {}).get("histories", [])
+    entered: list[datetime] = []
     for h in histories:
-        author_name = h.get("author", {}).get("displayName", "")
         for item in h.get("items", []):
-            if item.get("field") != "status":
-                continue
-            from_status = (item.get("fromString") or "").lower()
-            to_status = (item.get("toString") or "").lower()
-            if (
-                from_status in INACTIVE_STATUSES
-                and to_status in ACTIVE_STATUSES
-                and assignee_name
-                and _name_match(author_name, assignee_name)
-            ):
-                try:
-                    ts = datetime.fromisoformat(h["created"].replace("Z", "+00:00"))
-                    candidate_dates.append(ts)
-                except (ValueError, KeyError):
-                    pass
-
-    if candidate_dates:
-        candidate_dates.sort(reverse=True)
-        days = (today - candidate_dates[0]).days
-        return max(days, 0), "changelog_assignee_transition"
-
-    # Fallback a: assignee change to current assignee
-    if assignee_name:
-        for h in sorted(histories, key=lambda x: x.get("created", ""), reverse=True):
-            for item in h.get("items", []):
-                if item.get("field") == "assignee":
-                    to_val = item.get("toString") or item.get("to") or ""
-                    if _name_match(to_val, assignee_name):
-                        try:
-                            ts = datetime.fromisoformat(h["created"].replace("Z", "+00:00"))
-                            return max((today - ts).days, 0), "assignee_change"
-                        except (ValueError, KeyError):
-                            pass
-
-    # Fallback b: last status transition regardless of author
-    for h in sorted(histories, key=lambda x: x.get("created", ""), reverse=True):
-        for item in h.get("items", []):
-            if item.get("field") == "status":
-                try:
-                    ts = datetime.fromisoformat(h["created"].replace("Z", "+00:00"))
-                    return max((today - ts).days, 0), "last_status_transition"
-                except (ValueError, KeyError):
-                    pass
-
-    return 0, "no_changelog"
+            if item.get("field") == "status" and (item.get("toString") or "").lower() == current_l:
+                with contextlib.suppress(ValueError, KeyError):
+                    entered.append(datetime.fromisoformat(h["created"].replace("Z", "+00:00")))
+    if entered:
+        return max((today - max(entered)).days, 0)
+    created = fields.get("created")
+    if created:
+        try:
+            return max((today - datetime.fromisoformat(created.replace("Z", "+00:00"))).days, 0)
+        except (ValueError, KeyError):
+            pass
+    return 0
 
 
 def _ticket_base(issue: dict, roster: list[str]) -> dict:
@@ -331,7 +293,7 @@ def _ticket_base(issue: dict, roster: list[str]) -> dict:
 def collect_doing_board(
     config: dict, jira_auth: tuple, prev_360_date: str, swimlane_jql: str | None = None
 ) -> list[dict]:
-    """Query 1: In Progress, Review, Testing tickets with changelog-based days_worked."""
+    """Query 1: In Progress, Review, Testing tickets with days_in_status."""
     session = _make_session(jira_auth)
     base = _base_url(config)
     label = config["jira_label"]
@@ -351,7 +313,7 @@ def collect_doing_board(
         jql_parts.append(swimlane_jql)
     jql = " AND ".join(jql_parts) + " ORDER BY status ASC, priority DESC"
 
-    fields = "summary,status,priority,assignee,issuetype,customfield_10875,customfield_10464,parent"
+    fields = "summary,status,priority,assignee,issuetype,customfield_10875,customfield_10464,parent,created"
     issues = _jira_search(session, base, jql, fields=fields)
 
     results: list[dict] = []
@@ -364,8 +326,7 @@ def collect_doing_board(
             issue["changelog"] = {}
 
         ticket = _ticket_base(issue, roster)
-        days, _ = _compute_days_worked(issue)
-        ticket["days_worked"] = days
+        ticket["days_in_status"] = _days_in_status(issue)
 
         # Check PR status for ALL tickets that have PR links
         if ticket["prs"]:
@@ -602,8 +563,7 @@ def collect_epic_progress(config: dict, jira_auth: tuple, epics: list[dict]) -> 
 
         for child in children:
             ticket = _ticket_base(child, roster)
-            days, _ = _compute_days_worked(child)
-            ticket["days_in_status"] = days
+            ticket["days_in_status"] = _days_in_status(child)
 
             status = ticket["status"]
             if status in ("Done", "Closed"):
@@ -627,7 +587,7 @@ def collect_epic_progress(config: dict, jira_auth: tuple, epics: list[dict]) -> 
                 "key": epic_key,
                 "summary": epic.get("summary", ""),
                 "status": epic.get("status", ""),
-                "days_in_status": epic.get("days_worked", 0),
+                "days_in_status": epic.get("days_in_status", 0),
                 "total_children": total,
                 "done_count": done,
                 "in_progress_count": status_groups["In Progress"],

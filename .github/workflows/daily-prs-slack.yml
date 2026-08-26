@@ -2,7 +2,7 @@ name: Daily PRs Report → Slack
 
 on:
   schedule:
-    - cron: '0 6 * * 1-5'  # 06:00 UTC, Mon-Fri
+    - cron: '0 5 * * 1-5'  # 05:00 UTC, Mon-Fri
   workflow_dispatch:        # trigger manual via UI
     inputs:
       test_mode:

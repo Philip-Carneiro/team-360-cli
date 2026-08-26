@@ -83,6 +83,11 @@ def _pr_cell(pr_links: list[dict]) -> str:
     return " / ".join(parts)
 
 
+def _pr_open_days(pr_links: list[dict]) -> str:
+    ages = [p["age_days"] for p in pr_links if p.get("age_days") is not None and p.get("state") == "OPEN"]
+    return str(max(ages)) if ages else "—"
+
+
 def _pr_link_rich(p: dict) -> str:
     url = p.get("url", "")
     num = url.rstrip("/").split("/")[-1] if url else "?"
@@ -411,7 +416,7 @@ def _s_agenda(a: dict) -> str:
 def _enrich_agenda_text(key: str, ticket: dict) -> str:
     summary = ticket.get("summary", "")
     status = _get_name(ticket, "status")
-    days = ticket.get("days_worked", 0)
+    days = ticket.get("days_in_status", 0)
     assignee = _get_name(ticket, "assignee", "Unassigned")
     pr_links = ticket.get("pr_links", [])
     composite = ticket.get("composite_pr_status", "")
@@ -634,7 +639,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
         lines += ["### Stale Tickets", ""]
         rows = []
         for s in stale:
-            days = s["days_worked"]
+            days = s["days_in_status"]
             recurring = "Yes" if days >= 21 else "New"
             rows.append([_jl(s["key"]), s["summary"], s["assignee"], s["status"], str(days), s["level"], recurring])
         lines.append(_md_table(["Ticket", "Summary", "Assignee", "Status", "Days", "Level", "Recurring?"], rows))
@@ -646,7 +651,7 @@ def _s_risk(a: dict, prev_stale_keys: set[str] | None = None) -> str:
     if resolved:
         lines += ["### Resolved Since Last 360", "", "Previously stale items that were **resolved** this cycle:"]
         for r in resolved:
-            lines.append(f"- {_jl(r.get('key', '?'))} — was {r.get('level', '?')} ({r.get('days_worked', '?')}d)")
+            lines.append(f"- {_jl(r.get('key', '?'))} — was {r.get('level', '?')} ({r.get('days_in_status', '?')}d)")
         lines.append("")
     elif prev_stale_keys:
         current_stale = {s["key"] for s in stale}
@@ -1054,7 +1059,7 @@ def _s_doing_board(a: dict, config: dict) -> str:
         if tickets:
             rows = []
             for t in tickets:
-                days = t.get("days_worked", 0)
+                days = t.get("days_in_status", 0)
                 level = "—"
                 if not (
                     _get_name(t, "issuetype").lower() == "epic"
@@ -1094,7 +1099,7 @@ def _s_doing_board(a: dict, config: dict) -> str:
                 _jl(t["key"]),
                 t.get("summary", ""),
                 t.get("status", ""),
-                str(t.get("days_worked", 0)),
+                str(t.get("days_in_status", 0)),
                 _get_name(t, "priority"),
                 "Needs an owner",
             ]
@@ -1128,7 +1133,7 @@ def _s_in_review(a: dict, config: dict) -> str:
                     _jl(t["key"]),
                     t.get("summary", ""),
                     _get_name(t, "assignee", "Unassigned"),
-                    str(t.get("days_worked", 0)),
+                    _pr_open_days(t.get("pr_links", [])),
                     _pr_cell(t.get("pr_links", [])),
                     t.get("composite_pr_status", "—"),
                     _pr_blocker(t),
@@ -1136,7 +1141,7 @@ def _s_in_review(a: dict, config: dict) -> str:
             )
         lines.append(
             _md_table(
-                ["Ticket", "Summary", "Assignee", "Days Working", "PR Links", "Composite Status", "Blocker"], rows
+                ["Ticket", "Summary", "Assignee", "Days PR Open", "PR Links", "Composite Status", "Blocker"], rows
             )
         )
     else:
@@ -1246,7 +1251,7 @@ def _s_third_party(a: dict) -> str:
                 t.get("summary", ""),
                 t.get("status", ""),
                 _get_name(t, "assignee", "?"),
-                str(t.get("days_worked", 0)),
+                str(t.get("days_in_status", 0)),
                 "Third-party",
             ]
             for t in tp
