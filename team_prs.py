@@ -41,19 +41,21 @@ def _load_teams() -> dict[str, dict]:
         return {}
 
 
-def _select_team(teams: dict[str, dict], team_arg: str | None) -> str:
+def _select_team(teams: dict[str, dict], team_arg: str | None) -> list[tuple[str, dict]]:
     names = list(teams.keys())
 
     if team_arg:
+        if team_arg.lower() == "all":
+            return [(n, teams[n]) for n in names]
         for name in names:
             if team_arg.lower() in name.lower():
-                return name
+                return [(name, teams[name])]
         print(f"Team '{team_arg}' not found.")
         sys.exit(1)
 
     if len(names) == 1:
         print(f"Team: {names[0]}")
-        return names[0]
+        return [(names[0], teams[names[0]])]
 
     print("\nAvailable teams:")
     for i, name in enumerate(names, 1):
@@ -63,7 +65,7 @@ def _select_team(teams: dict[str, dict], team_arg: str | None) -> str:
             choice = input("\nSelect team: ").strip()
             idx = int(choice) - 1
             if 0 <= idx < len(names):
-                return names[idx]
+                return [(names[idx], teams[names[idx]])]
         except (ValueError, EOFError):
             sys.exit(1)
 
@@ -443,12 +445,8 @@ def _verify_open_prs(jira_sourced: list[dict]) -> set[str]:
     return drop_urls
 
 
-def run(team_arg: str | None = None, verbose: bool = False) -> None:
+def _run_one(team_name: str, sources: dict) -> None:
     from config import load_config
-
-    teams = _load_teams()
-    team_name = _select_team(teams, team_arg)
-    sources = teams[team_name]
 
     print(f"\nLoading config for {team_name}...", flush=True)
     config = load_config(sources=sources)
@@ -527,6 +525,12 @@ def run(team_arg: str | None = None, verbose: bool = False) -> None:
     out_path = out_dir / filename
     out_path.write_text(report, encoding="utf-8")
     print(f"\nSaved: {out_path}")
+
+
+def run(team_arg: str | None = None, verbose: bool = False) -> None:
+    teams = _load_teams()
+    for team_name, sources in _select_team(teams, team_arg):
+        _run_one(team_name, sources)
 
 
 def main() -> None:

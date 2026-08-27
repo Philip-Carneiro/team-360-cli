@@ -11,6 +11,7 @@ from team_prs import (
     _is_bot,
     _match_to_roster,
     _review_status,
+    _select_team,
     _verify_open_prs,
 )
 
@@ -43,6 +44,27 @@ def test_match_first_name_branch():
 def test_match_none():
     assert _match_to_roster("charlie", ROSTER) is None
     assert _match_to_roster("", ROSTER) is None
+
+
+def test_select_team_all_sentinel_multi_team():
+    """Sentinel 'all' with multiple teams returns all teams as list of tuples."""
+    teams = {"Team A": {"a": 1}, "Team B": {"b": 2}}
+    result = _select_team(teams, "all")
+    assert len(result) == 2
+    team_names = [name for name, _ in result]
+    team_sources = [sources for _, sources in result]
+    assert "Team A" in team_names
+    assert "Team B" in team_names
+    assert {"a": 1} in team_sources
+    assert {"b": 2} in team_sources
+
+
+def test_select_team_all_sentinel_single_team():
+    """Sentinel 'all' with single team returns that team as list of one tuple."""
+    teams = {"Only Team": {"x": 9}}
+    result = _select_team(teams, "all")
+    assert len(result) == 1
+    assert result[0] == ("Only Team", {"x": 9})
 
 
 def test_dedupe_keeps_older_and_propagates_jira_key():
@@ -209,7 +231,7 @@ def test_jira_sourced_closed_pr_removed(monkeypatch, tmp_path):
         patch("team_prs._generate_report", side_effect=mock_report_fn),
         patch("team_prs._SCRIPT_DIR", tmp_path),
         patch("team_prs._load_teams", return_value={"Test Team": {}}),
-        patch("team_prs._select_team", return_value="Test Team"),
+        patch("team_prs._select_team", return_value=[("Test Team", {})]),
     ):
         mock_proc_view = MagicMock()
         mock_proc_view.returncode = 0
@@ -255,7 +277,7 @@ def test_jira_sourced_unverifiable_pr_removed(monkeypatch, tmp_path):
         patch("team_prs._generate_report", side_effect=mock_report_fn),
         patch("team_prs._SCRIPT_DIR", tmp_path),
         patch("team_prs._load_teams", return_value={"Test Team": {}}),
-        patch("team_prs._select_team", return_value="Test Team"),
+        patch("team_prs._select_team", return_value=[("Test Team", {})]),
     ):
         mock_proc_view = MagicMock()
         mock_proc_view.returncode = 1
@@ -298,7 +320,7 @@ def test_jira_sourced_exception_pr_removed(monkeypatch, tmp_path):
         patch("team_prs._generate_report", side_effect=mock_report_fn),
         patch("team_prs._SCRIPT_DIR", tmp_path),
         patch("team_prs._load_teams", return_value={"Test Team": {}}),
-        patch("team_prs._select_team", return_value="Test Team"),
+        patch("team_prs._select_team", return_value=[("Test Team", {})]),
     ):
         from team_prs import run
 
@@ -337,7 +359,7 @@ def test_jira_sourced_draft_pr_removed(monkeypatch, tmp_path):
         patch("team_prs._generate_report", side_effect=mock_report_fn),
         patch("team_prs._SCRIPT_DIR", tmp_path),
         patch("team_prs._load_teams", return_value={"Test Team": {}}),
-        patch("team_prs._select_team", return_value="Test Team"),
+        patch("team_prs._select_team", return_value=[("Test Team", {})]),
     ):
         mock_proc_view = MagicMock()
         mock_proc_view.returncode = 0
@@ -384,7 +406,7 @@ def test_jira_sourced_open_nondraft_kept_with_correct_age(monkeypatch, tmp_path)
         patch("team_prs._generate_report", side_effect=mock_report_fn),
         patch("team_prs._SCRIPT_DIR", tmp_path),
         patch("team_prs._load_teams", return_value={"Test Team": {}}),
-        patch("team_prs._select_team", return_value="Test Team"),
+        patch("team_prs._select_team", return_value=[("Test Team", {})]),
     ):
         mock_proc_view = MagicMock()
         mock_proc_view.returncode = 0
@@ -455,7 +477,7 @@ def test_dedup_before_verification_url_verified_once(monkeypatch, tmp_path):
         patch("team_prs._generate_report", side_effect=mock_report_fn),
         patch("team_prs._SCRIPT_DIR", tmp_path),
         patch("team_prs._load_teams", return_value={"Test Team": {}}),
-        patch("team_prs._select_team", return_value="Test Team"),
+        patch("team_prs._select_team", return_value=[("Test Team", {})]),
     ):
         mock_proc_view = MagicMock()
         mock_proc_view.returncode = 0
